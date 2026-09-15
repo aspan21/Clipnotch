@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%lld characters</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>%lld символа</string>
+			<key>many</key>
+			<string>%lld символов</string>
+			<key>one</key>
+			<string>%lld символ</string>
+			<key>other</key>
+			<string>%lld символа</string>
+		</dict>
+	</dict>
+	<key>%lld clips</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>%lld клипа</string>
+			<key>many</key>
+			<string>%lld клипов</string>
+			<key>one</key>
+			<string>%lld клип</string>
+			<key>other</key>
+			<string>%lld клипа</string>
+		</dict>
+	</dict>
+	<key>%lld clips stored</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>Сохранено %lld клипа</string>
+			<key>many</key>
+			<string>Сохранено %lld клипов</string>
+			<key>one</key>
+			<string>Сохранён %lld клип</string>
+			<key>other</key>
+			<string>Сохранено %lld клипа</string>
+		</dict>
+	</dict>
+	<key>%lld days</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>%lld дня</string>
+			<key>many</key>
+			<string>%lld дней</string>
+			<key>one</key>
+			<string>%lld день</string>
+			<key>other</key>
+			<string>%lld дня</string>
+		</dict>
+	</dict>
+	<key>%lld files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>%lld файла</string>
+			<key>many</key>
+			<string>%lld файлов</string>
+			<key>one</key>
+			<string>%lld файл</string>
+			<key>other</key>
+			<string>%lld файла</string>
+		</dict>
+	</dict>
+	<key>Press ⌘V %lld times to paste in order</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>Нажмите ⌘V %lld раза, чтобы вставить по порядку</string>
+			<key>many</key>
+			<string>Нажмите ⌘V %lld раз, чтобы вставить по порядку</string>
+			<key>one</key>
+			<string>Нажмите ⌘V %lld раз, чтобы вставить по порядку</string>
+			<key>other</key>
+			<string>Нажмите ⌘V %lld раза, чтобы вставить по порядку</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

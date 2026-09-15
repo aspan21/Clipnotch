@@ -13,8 +13,8 @@ struct ClipboardPane: View {
             if store.items.isEmpty {
                 EmptyStateView(
                     symbol: "square.on.square.dashed",
-                    title: "Clipboard is empty",
-                    detail: "Copy anything — screenshots, text, files — and it lands here."
+                    title: String(localized: "Clipboard Is Empty"),
+                    detail: String(localized: "Screenshots, text, and files you copy appear here.")
                 )
             } else {
                 grid

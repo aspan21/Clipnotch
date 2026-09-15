@@ -17,6 +17,8 @@ struct NotchRootView: View {
     @ObservedObject var controller: NotchController
     @ObservedObject var media = NowPlayingModel.shared
     @ObservedObject var queue = PasteQueue.shared
+    @ObservedObject var pomodoro = PomodoroTimer.shared
+    @ObservedObject var menuBar = MenuBarObstruction.shared
 
     /// Ties the closed strip's album art to the open panel's, so the artwork
     /// flies between the two instead of one fading out while the other fades in.
@@ -139,17 +141,33 @@ struct NotchRootView: View {
             if !controller.isOpen { controller.open() }
         }
         .notchPan { controller.pan($0) }
+        // Files dropped anywhere on the panel land on the shelf, closed strip
+        // included — reaching it is enough to open it.
+        .onDrop(of: [.fileURL], delegate: ShelfDropDelegate(controller: controller))
     }
 
     /// Pinned to the full open size, so the growing shape reveals it instead of
     /// squeezing it through a hundred intermediate layouts.
+    ///
+    /// The menu runs down the left edge and a column of the same width mirrors
+    /// it on the right, so the pane stays centred on the cutout's axis.
     private var openContent: some View {
-        VStack(spacing: 10) {
-            NotchHeader()
-                .frame(height: max(28, controller.closedSize.height))
+        HStack(alignment: .top, spacing: Self.railSpacing) {
+            NotchSidebar()
+                .frame(width: Self.railWidth)
+                .frame(maxHeight: .infinity)
 
-            pane
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 10) {
+                // The hardware cutout occupies this band; nothing goes here.
+                Color.clear
+                    .frame(height: controller.headerHeight)
+
+                pane
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            HeaderIcon(symbol: "xmark") { controller.close() }
+                .frame(width: Self.railWidth, height: controller.headerHeight)
         }
         .padding(.horizontal, NotchGeometry.contentInset(forTopRadius: NotchGeometry.cornerRadii.open.top))
         .padding(.top, 6)
@@ -168,108 +186,168 @@ struct NotchRootView: View {
         switch controller.tab {
         case .nowPlaying: NowPlayingPane(artworkNamespace: artwork)
         case .clipboard: ClipboardPane()
+        case .shelf: ShelfPane()
+        case .pomodoro: PomodoroPane()
         }
     }
+
+    private static let railWidth: CGFloat = 32
+    private static let railSpacing: CGFloat = 10
 }
 
-private struct NotchHeader: View {
+/// Icon-only tab rail. The selection slides between icons rather than
+/// fading from one to the next.
+private struct NotchSidebar: View {
     @EnvironmentObject var controller: NotchController
-    @ObservedObject var store = ClipStore.shared
     @ObservedObject var queue = PasteQueue.shared
+    @ObservedObject var shelf = ShelfStore.shared
+    @ObservedObject var pomodoro = PomodoroTimer.shared
+    @ObservedObject var menuBar = MenuBarObstruction.shared
 
-    /// Lets the selected pill's capsule slide between tabs instead of one
-    /// fading out where the other fades in.
     @Namespace private var selection
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 4) {
-                ForEach(NotchTab.allCases) { tab in
-                    TabPill(
-                        tab: tab,
-                        isSelected: controller.tab == tab,
-                        badge: tab == .clipboard ? badgeText : nil,
-                        selection: selection
-                    ) {
-                        withAnimation(Theme.snap) { controller.tab = tab }
+        VStack(spacing: 4) {
+            ForEach(NotchTab.allCases) { tab in
+                SidebarButton(
+                    tab: tab,
+                    isSelected: controller.tab == tab,
+                    badge: badge(for: tab),
+                    selection: selection
+                ) {
+                    withAnimation(Theme.snap) {
+                        controller.previewItem = nil
+                        controller.tab = tab
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // The hardware cutout occupies this band. Nothing may be laid out
-            // in it: the camera housing physically covers whatever lands here,
-            // so a control placed under it can be neither seen nor clicked.
-            Color.clear
-                .frame(width: controller.closedSize.width)
-
-            HeaderIcon(symbol: "xmark") { controller.close() }
-                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .frame(maxHeight: .infinity, alignment: .center)
     }
 
-    private var badgeText: String? {
-        if queue.isActive { return "\(queue.queue.count)" }
-        return store.items.isEmpty ? nil : "\(store.items.count)"
+    private func badge(for tab: NotchTab) -> SidebarBadge? {
+        switch tab {
+        case .clipboard:
+            return queue.isActive ? .count(queue.queue.count, Theme.accent) : nil
+        case .shelf:
+            return shelf.items.isEmpty ? nil : .count(shelf.items.count, Theme.primaryText)
+        case .pomodoro:
+            return pomodoro.isRunning ? .dot(pomodoro.phase.tint) : nil
+        case .nowPlaying:
+            return nil
+        }
     }
 }
 
-private struct TabPill: View {
+private enum SidebarBadge: Equatable {
+    case count(Int, Color)
+    case dot(Color)
+}
+
+private struct SidebarButton: View {
     let tab: NotchTab
     let isSelected: Bool
-    let badge: String?
+    let badge: SidebarBadge?
     let selection: Namespace.ID
     let action: () -> Void
 
     @State private var isHovering = false
 
+    private static let side: CGFloat = 26
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: tab.symbol)
-                    .font(.system(size: 11, weight: .semibold))
-
-                // Only the active tab spells itself out. Both labels at once do
-                // not fit in the flank beside the cutout, and whichever one
-                // loses gets laid out under the camera housing.
-                if isSelected {
-                    Text(tab.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .tracking(Theme.tracking(forSize: 12))
-                        .fixedSize()
+            Image(systemName: tab.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isSelected ? Theme.primaryText : (isHovering ? Theme.primaryText.opacity(0.8) : Theme.secondaryText))
+                .frame(width: Self.side, height: Self.side)
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Theme.cardFillHover)
+                            .matchedGeometryEffect(id: "tabSelection", in: selection)
+                    } else if isHovering {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Theme.cardFill)
+                    }
                 }
-
-                if let badge {
-                    Text(badge)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(isSelected ? Theme.primaryText : Theme.secondaryText)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Capsule().fill(Color.white.opacity(0.14)))
-                }
-            }
-            .foregroundStyle(isSelected ? Theme.primaryText : Theme.secondaryText)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background {
-                if isSelected {
-                    Capsule(style: .continuous)
-                        .fill(Theme.cardFillHover)
-                        .matchedGeometryEffect(id: "tabSelection", in: selection)
-                } else {
-                    // A faint fill even when idle, so an icon-only tab still
-                    // reads as a control instead of a loose glyph.
-                    Capsule(style: .continuous)
-                        .fill(isHovering ? Theme.cardFill : Color.white.opacity(0.04))
-                }
-            }
-            .contentShape(Capsule(style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) { badgeView }
         .animation(Theme.quick, value: isHovering)
+        .animation(Theme.snap, value: badge)
         .onHover { isHovering = $0 }
         .help(tab.title)
+    }
+
+    @ViewBuilder
+    private var badgeView: some View {
+        switch badge {
+        case .count(let count, let tint):
+            Text(count > 99 ? "99+" : "\(count)")
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.black)
+                .padding(.horizontal, 3.5)
+                .frame(minWidth: 13, minHeight: 13)
+                .background(Capsule().fill(tint))
+                .overlay(Capsule().strokeBorder(Theme.panel, lineWidth: 1.5))
+                .fixedSize()
+                .offset(x: 5, y: -4)
+                .contentTransition(.numericText())
+                .transition(.scale.combined(with: .opacity))
+                .allowsHitTesting(false)
+        case .dot(let tint):
+            Circle()
+                .fill(tint)
+                .frame(width: 7, height: 7)
+                .overlay(Circle().strokeBorder(Theme.panel, lineWidth: 1.5))
+                .offset(x: 2, y: -1)
+                .transition(.scale.combined(with: .opacity))
+                .allowsHitTesting(false)
+        case nil:
+            EmptyView()
+        }
+    }
+}
+
+/// Routes file drops onto the shelf. Rejects drags that started on the shelf
+/// itself, so pulling a file out and letting go over the notch is a no-op.
+private struct ShelfDropDelegate: DropDelegate {
+    let controller: NotchController
+
+    func validateDrop(info: DropInfo) -> Bool {
+        !ShelfDragSource.shared.isDragging && info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard validateDrop(info: info) else { return }
+        controller.fileDragEntered()
+        controller.isShelfDropTargeted = true
+    }
+
+    func dropExited(info: DropInfo) {
+        controller.isShelfDropTargeted = false
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: validateDrop(info: info) ? .copy : .forbidden)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        controller.isShelfDropTargeted = false
+        let providers = info.itemProviders(for: [.fileURL])
+        guard !providers.isEmpty else { return false }
+        ShelfStore.loadURLs(from: providers) { urls in
+            withAnimation(Theme.snap) { ShelfStore.shared.add(urls) }
+        }
+        return true
     }
 }
 

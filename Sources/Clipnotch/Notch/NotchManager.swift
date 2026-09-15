@@ -17,6 +17,10 @@ final class NotchManager {
     private var panels: [CGDirectDisplayID: Panel] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var mouseMonitors: [Any] = []
+    /// Drag pasteboard generation at the last mouse-down. A different one
+    /// during the drag means a real drag session started since.
+    private var dragChangeCount = 0
+    private var isFileDragging = false
 
     private init() {}
 
@@ -57,15 +61,19 @@ final class NotchManager {
     /// view large enough to catch the pointer would also swallow clicks meant
     /// for the window underneath.
     private func startPointerTracking() {
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
+        let mask: NSEvent.EventTypeMask = [
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseDown, .leftMouseUp,
+        ]
 
-        let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.updatePeek() }
+        let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            let type = event.type
+            MainActor.assumeIsolated { self?.handlePointer(type) }
         })
         if let global { mouseMonitors.append(global) }
 
         let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.updatePeek() }
+            let type = event.type
+            MainActor.assumeIsolated { self?.handlePointer(type) }
             return event
         })
         if let local { mouseMonitors.append(local) }
@@ -74,6 +82,85 @@ final class NotchManager {
     private func stopPointerTracking() {
         for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
         mouseMonitors.removeAll()
+    }
+
+    private func handlePointer(_ type: NSEvent.EventType) {
+        switch type {
+        case .leftMouseDown:
+            dragChangeCount = NSPasteboard(name: .drag).changeCount
+            isFileDragging = false
+        case .leftMouseDragged:
+            updatePeek()
+            updateFileDrag()
+        case .leftMouseUp:
+            if isFileDragging { fileDragEnded() }
+        default:
+            updatePeek()
+            trackDragOpenedPanels()
+        }
+    }
+
+    // MARK: - File drags
+
+    /// Opens the shelf on whichever display's notch a file drag reaches.
+    ///
+    /// Read off the drag pasteboard and the pointer rather than drop callbacks:
+    /// the closed strip is too small a target to rely on, and hover tracking is
+    /// suspended for the whole drag.
+    private func updateFileDrag() {
+        if !isFileDragging {
+            let board = NSPasteboard(name: .drag)
+            guard board.changeCount != dragChangeCount,
+                  board.types?.contains(.fileURL) == true
+            else { return }
+            isFileDragging = true
+        }
+        // Carrying files off the shelf is not a reason to open another one.
+        guard !ShelfDragSource.shared.isDragging else {
+            trackDragOpenedPanels()
+            return
+        }
+
+        let mouse = NSEvent.mouseLocation
+        for (id, panel) in panels {
+            guard let screen = NotchGeometry.screen(for: id) else { continue }
+            let controller = panel.controller
+            if NotchGeometry.dragZone(on: screen, closedSize: controller.closedSize).contains(mouse) {
+                controller.fileDragEntered()
+            }
+        }
+        trackDragOpenedPanels()
+    }
+
+    /// A file drag finished, from another app or off the shelf. Hover tracking
+    /// missed the whole thing, so any panel the pointer is no longer over closes.
+    func fileDragEnded() {
+        isFileDragging = false
+        Task { @MainActor [weak self] in
+            // Let the drop land before the panel starts folding away.
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self else { return }
+            let mouse = NSEvent.mouseLocation
+            for (id, panel) in self.panels {
+                let controller = panel.controller
+                guard controller.isOpen, controller.previewItem == nil,
+                      let screen = NotchGeometry.screen(for: id)
+                else { continue }
+                let frame = NotchGeometry.panelFrame(on: screen, size: controller.currentSize)
+                if !frame.contains(mouse) { controller.close() }
+            }
+        }
+    }
+
+    private func trackDragOpenedPanels() {
+        let mouse = NSEvent.mouseLocation
+        for (id, panel) in panels where panel.controller.openedForDrag {
+            guard let screen = NotchGeometry.screen(for: id) else { continue }
+            let controller = panel.controller
+            let frame = NotchGeometry.panelFrame(on: screen, size: controller.currentSize)
+                .insetBy(dx: -16, dy: -16)
+            controller.dragPointerMoved(inside: frame.contains(mouse))
+        }
     }
 
     private func updatePeek() {

@@ -16,8 +16,8 @@ struct NowPlayingPane: View {
             } else {
                 EmptyStateView(
                     symbol: "music.note",
-                    title: "Nothing playing",
-                    detail: "Start audio in any app and it shows up here."
+                    title: String(localized: "Not Playing"),
+                    detail: String(localized: "Play audio in any app and it appears here.")
                 )
             }
         }
@@ -30,7 +30,7 @@ struct NowPlayingPane: View {
                 artwork
 
                 VStack(alignment: .leading, spacing: 6) {
-                    MarqueeText(text: media.snapshot.title.isEmpty ? "Unknown title" : media.snapshot.title,
+                    MarqueeText(text: media.snapshot.title.isEmpty ? String(localized: "Unknown Title") : media.snapshot.title,
                                 font: .system(size: 16, weight: .semibold),
                                 tracking: Theme.tracking(forSize: 16))
                         .frame(height: 22)
@@ -120,19 +120,21 @@ struct NowPlayingPane: View {
     private var unavailable: some View {
         EmptyStateView(
             symbol: "exclamationmark.triangle",
-            title: "Now Playing unavailable",
+            title: String(localized: "Now Playing Unavailable"),
             detail: media.unavailableReason.isEmpty
-                ? "The MediaRemote adapter could not start."
+                ? String(localized: "The MediaRemote adapter couldn’t start.")
                 : media.unavailableReason
         )
     }
 }
 
-private struct TransportButton: View {
+struct TransportButton: View {
     let symbol: String
     let glyph: CGFloat
     let side: CGFloat
     var prominent: Bool = false
+    /// Fill of the prominent button.
+    var tint: Color = Theme.primaryText
     let action: () -> Void
 
     @State private var isHovering = false
@@ -146,7 +148,7 @@ private struct TransportButton: View {
                 .background(
                     Circle().fill(
                         prominent
-                            ? Theme.primaryText.opacity(isHovering ? 1 : 0.92)
+                            ? tint.opacity(isHovering ? 1 : 0.92)
                             : (isHovering ? Theme.cardFillHover : Theme.cardFill)
                     )
                 )

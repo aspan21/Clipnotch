@@ -135,7 +135,7 @@ final class MediaRemoteBridge {
             // genuinely not working; report why.
             if !self.hasStreamed, attempts >= 2 {
                 let reason = self.lastStreamError.isEmpty
-                    ? "MediaRemote is not available on this system"
+                    ? String(localized: "MediaRemote isn’t available on this system.")
                     : self.lastStreamError
                 self.setAvailability(.unavailable(reason))
             }

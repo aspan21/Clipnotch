@@ -8,6 +8,7 @@ struct ClosedContentView: View {
     @EnvironmentObject var controller: NotchController
     @ObservedObject var media = NowPlayingModel.shared
     @ObservedObject var queue = PasteQueue.shared
+    @ObservedObject var pomodoro = PomodoroTimer.shared
 
     var body: some View {
         // Two flanks plus the cutout add up to `effectiveClosedSize.width`
@@ -26,6 +27,21 @@ struct ClosedContentView: View {
     private var side: CGFloat { controller.closedContentSize }
 
     private var leftFlank: some View {
+        Group {
+            switch controller.closedActivity {
+            case .pomodoro:
+                PomodoroPip(timer: pomodoro, side: side)
+            case .pasteQueue, .media:
+                if media.isLive { artwork }
+            case .none:
+                EmptyView()
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
         Group {
             if let artwork = media.artwork {
                 Image(nsImage: artwork)
@@ -54,18 +70,84 @@ struct ClosedContentView: View {
                     )
             }
         }
-        .frame(maxWidth: .infinity)
+        // Dims during the pause linger, just before the flanks fold away.
+        .opacity(media.snapshot.isPlaying ? 1 : 0.55)
+        .animation(Theme.quick, value: media.snapshot.isPlaying)
     }
 
     private var rightFlank: some View {
         Group {
-            if queue.isActive {
+            switch controller.closedActivity {
+            case .pasteQueue:
                 QueuePip(count: queue.queue.count, side: side)
-            } else if media.snapshot.hasTrack {
+            case .pomodoro:
+                PomodoroClock(timer: pomodoro)
+            case .media:
                 PlaybackIndicator(isPlaying: media.snapshot.isPlaying, tint: media.artworkAccent)
+            case .none:
+                EmptyView()
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Small ring that drains as the pomodoro phase runs; a check once it is done.
+private struct PomodoroPip: View {
+    @ObservedObject var timer: PomodoroTimer
+    let side: CGFloat
+
+    var body: some View {
+        let tint = timer.phase.tint
+        let ring = max(4, side * 0.78)
+
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let progress = timer.justFinished ? 0 : timer.progress(at: context.date)
+            ZStack {
+                Circle()
+                    .stroke(tint.opacity(0.22), lineWidth: 2.5)
+                Circle()
+                    .trim(from: progress, to: 1)
+                    .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 1), value: progress)
+                if timer.justFinished {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: max(5, ring * 0.45), weight: .heavy))
+                        .foregroundStyle(tint)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: ring, height: ring)
+        }
+        .frame(width: side, height: side)
+        .keyframeAnimator(initialValue: CGFloat(1), trigger: timer.finishCount) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(1.35, duration: 0.2, spring: .snappy)
+            SpringKeyframe(1, duration: 0.5, spring: .bouncy)
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+}
+
+/// Remaining time beside the cutout, ticking with a rolling-digit transition.
+private struct PomodoroClock: View {
+    @ObservedObject var timer: PomodoroTimer
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = timer.remaining(at: context.date)
+            Text(timer.justFinished ? String(localized: "Done") : PomodoroTimer.format(remaining))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(timer.phase.tint)
+                .lineLimit(1)
+                .fixedSize()
+                .contentTransition(.numericText(countsDown: true))
+                .animation(Theme.snap, value: Int(remaining.rounded(.up)))
+        }
+        .transition(.opacity)
     }
 }
 
@@ -84,11 +166,9 @@ private struct QueuePip: View {
     }
 }
 
-/// Bars that breathe while audio plays, and a pause glyph when it does not.
-///
-/// Flattening the bars instead reads as three stray dots — and in the artwork's
-/// accent colour they look like somebody else's status light, not like paused
-/// playback.
+/// Bars that breathe while audio plays. On pause they settle flat for the few
+/// seconds before the flanks fold away — never long enough to read as three
+/// stray dots.
 private struct PlaybackIndicator: View {
     let isPlaying: Bool
     let tint: Color
@@ -96,23 +176,15 @@ private struct PlaybackIndicator: View {
     @State private var phase: Double = 0
 
     var body: some View {
-        Group {
-            if isPlaying {
-                HStack(spacing: 2.5) {
-                    ForEach(0..<3, id: \.self) { index in
-                        Capsule(style: .continuous)
-                            .fill(tint)
-                            .frame(width: 2.5, height: height(for: index))
-                    }
-                }
-                .animation(.easeInOut(duration: 0.22), value: phase)
-            } else {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    // Muted: idle state, not something asking for attention.
-                    .foregroundStyle(Theme.secondaryText)
+        HStack(spacing: 2.5) {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(isPlaying ? 1 : 0.5))
+                    .frame(width: 2.5, height: isPlaying ? height(for: index) : 3)
             }
         }
+        .animation(.easeInOut(duration: isPlaying ? 0.22 : 0.35), value: phase)
+        .animation(.easeInOut(duration: 0.35), value: isPlaying)
         .frame(height: 14, alignment: .center)
         // Keyed on `isPlaying`, so the loop is torn down while paused instead of
         // waking every 180ms to discard its own tick.

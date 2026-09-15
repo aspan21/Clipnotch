@@ -51,7 +51,7 @@ struct ClipPreview: View {
                 VStack(spacing: 8) {
                     Image(systemName: "photo")
                         .font(.system(size: 30, weight: .light))
-                    Text("This clip's image is no longer on disk")
+                    Text("This clip’s image is no longer on disk.")
                         .font(.system(size: 11))
                         .tracking(Theme.tracking(forSize: 11))
                 }
@@ -116,6 +116,6 @@ private struct BackButton: View {
         .buttonStyle(.plain)
         .animation(Theme.quick, value: isHovering)
         .onHover { isHovering = $0 }
-        .help("Back to the clip list")
+        .help("Back to Clips")
     }
 }

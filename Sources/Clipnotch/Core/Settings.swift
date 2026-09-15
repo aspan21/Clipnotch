@@ -16,6 +16,9 @@ final class Settings: ObservableObject {
         static let openOnHover = "openOnHover"
         static let advanceDelayMs = "advanceDelayMs"
         static let hasSeenAccessibilityPrompt = "hasSeenAccessibilityPrompt"
+        static let focusMinutes = "pomodoroFocusMinutes"
+        static let shortBreakMinutes = "pomodoroShortBreakMinutes"
+        static let longBreakMinutes = "pomodoroLongBreakMinutes"
     }
 
     private init() {
@@ -27,6 +30,9 @@ final class Settings: ObservableObject {
             Key.notchHeightOverride: 0,
             Key.openOnHover: true,
             Key.advanceDelayMs: 150,
+            Key.focusMinutes: 25,
+            Key.shortBreakMinutes: 5,
+            Key.longBreakMinutes: 15,
         ])
     }
 
@@ -43,6 +49,11 @@ final class Settings: ObservableObject {
     /// Delay between the intercepted paste and swapping in the next queue item.
     @Published var advanceDelayMs: Int = 150 { didSet { store.set(advanceDelayMs, forKey: Key.advanceDelayMs) } }
 
+    /// Pomodoro phase lengths, set by dragging round the dial.
+    @Published var focusMinutes: Int = 25 { didSet { store.set(focusMinutes, forKey: Key.focusMinutes) } }
+    @Published var shortBreakMinutes: Int = 5 { didSet { store.set(shortBreakMinutes, forKey: Key.shortBreakMinutes) } }
+    @Published var longBreakMinutes: Int = 15 { didSet { store.set(longBreakMinutes, forKey: Key.longBreakMinutes) } }
+
     var hasSeenAccessibilityPrompt: Bool {
         get { store.bool(forKey: Key.hasSeenAccessibilityPrompt) }
         set { store.set(newValue, forKey: Key.hasSeenAccessibilityPrompt) }
@@ -56,5 +67,8 @@ final class Settings: ObservableObject {
         notchHeightOverride = store.double(forKey: Key.notchHeightOverride)
         openOnHover = store.bool(forKey: Key.openOnHover)
         advanceDelayMs = store.integer(forKey: Key.advanceDelayMs)
+        focusMinutes = store.integer(forKey: Key.focusMinutes)
+        shortBreakMinutes = store.integer(forKey: Key.shortBreakMinutes)
+        longBreakMinutes = store.integer(forKey: Key.longBreakMinutes)
     }
 }

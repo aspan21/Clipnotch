@@ -24,33 +24,33 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         let queue = PasteQueue.shared
         if queue.isActive {
-            menu.addItem(withTitle: "Queue: \(queue.queue.count) waiting", action: nil, keyEquivalent: "")
-            menu.addItem(withTitle: "Clear queue", action: #selector(clearQueue), keyEquivalent: "")
+            menu.addItem(withTitle: String(localized: "In Queue: \(queue.queue.count)"), action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: String(localized: "Clear Queue"), action: #selector(clearQueue), keyEquivalent: "")
                 .target = self
             menu.addItem(.separator())
         }
 
-        menu.addItem(withTitle: "Open Clipboard  \u{2318}\u{21E7}V", action: #selector(openClipboard), keyEquivalent: "")
+        menu.addItem(withTitle: String(localized: "Open Clipboard") + "  \u{2318}\u{21E7}V", action: #selector(openClipboard), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "Open Now Playing", action: #selector(openNowPlaying), keyEquivalent: "")
+        menu.addItem(withTitle: String(localized: "Open Now Playing"), action: #selector(openNowPlaying), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
 
         let count = ClipStore.shared.items.count
-        menu.addItem(withTitle: "\(count) clip\(count == 1 ? "" : "s") stored", action: nil, keyEquivalent: "")
-        menu.addItem(withTitle: "Clear history", action: #selector(clearHistory), keyEquivalent: "")
+        menu.addItem(withTitle: String(localized: "\(count) clips stored"), action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: String(localized: "Clear History"), action: #selector(clearHistory), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
 
         if !AccessibilityGuard.shared.isTrusted {
-            menu.addItem(withTitle: "Grant Accessibility access…", action: #selector(grantAccess), keyEquivalent: "")
+            menu.addItem(withTitle: String(localized: "Allow Accessibility Access…"), action: #selector(grantAccess), keyEquivalent: "")
                 .target = self
             menu.addItem(.separator())
         }
 
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(withTitle: String(localized: "Settings…"), action: #selector(openSettings), keyEquivalent: ",")
             .target = self
-        menu.addItem(withTitle: "Quit Clipnotch", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: String(localized: "Quit Clipnotch"), action: #selector(quit), keyEquivalent: "q")
             .target = self
     }
 

@@ -5,13 +5,17 @@ import SwiftUI
 enum NotchTab: String, CaseIterable, Identifiable {
     case nowPlaying
     case clipboard
+    case shelf
+    case pomodoro
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .nowPlaying: return "Now Playing"
-        case .clipboard: return "Clipboard"
+        case .nowPlaying: return String(localized: "Now Playing")
+        case .clipboard: return String(localized: "Clipboard")
+        case .shelf: return String(localized: "Shelf")
+        case .pomodoro: return String(localized: "Pomodoro")
         }
     }
 
@@ -19,8 +23,18 @@ enum NotchTab: String, CaseIterable, Identifiable {
         switch self {
         case .nowPlaying: return "music.note"
         case .clipboard: return "square.on.square.dashed"
+        case .shelf: return "tray.full"
+        case .pomodoro: return "timer"
         }
     }
+}
+
+/// What the closed notch shows beside the cutout, highest priority first.
+enum ClosedActivity: Equatable {
+    case none
+    case pasteQueue
+    case pomodoro
+    case media
 }
 
 /// Owns open/closed state, gesture state and the sizing that one display's
@@ -44,6 +58,12 @@ final class NotchController: ObservableObject {
     /// Whether the hardware already eats the strip we draw. False means the
     /// strip would cover real content.
     @Published private(set) var hasPhysicalNotch: Bool
+    /// A file drag is hovering over the open panel.
+    @Published var isShelfDropTargeted = false
+    /// Opened because a file drag reached the notch. Hover tracking is
+    /// suspended during a drag, so closing has to be driven by the pointer
+    /// monitor instead of `onHover`.
+    var openedForDrag = false
 
     /// Points of pull that commit to opening or closing.
     static let commitThreshold: CGFloat = 120
@@ -53,6 +73,7 @@ final class NotchController: ObservableObject {
     static let closedContentInset: CGFloat = 12
 
     private var hoverCloseTask: Task<Void, Never>?
+    private var dragCloseTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     init(displayID: CGDirectDisplayID) {
@@ -70,6 +91,10 @@ final class NotchController: ObservableObject {
         closedSize = NotchGeometry.closedSize(for: screen)
         hasPhysicalNotch = NotchGeometry.hasPhysicalNotch(screen)
     }
+
+    /// Flank width while the pomodoro clock shows: the time needs more room
+    /// than a square glyph.
+    static let pomodoroFlankWidth: CGFloat = 48
 
     /// Closed strip hidden entirely: an external display has no cutout to hide
     /// it in, so it would sit on top of the window content underneath.
@@ -97,12 +122,45 @@ final class NotchController: ObservableObject {
     /// Width each flank actually occupies: zero unless there is live content,
     /// so the flanks and the frame can never disagree by a few points.
     var activeFlankWidth: CGFloat {
-        hasClosedContent ? flankWidth : 0
+        hasClosedContent ? flankWidth(for: closedActivity) : 0
+    }
+
+    private func flankWidth(for activity: ClosedActivity) -> CGFloat {
+        activity == .pomodoro ? max(flankWidth, Self.pomodoroFlankWidth) : flankWidth
     }
 
     var hasClosedContent: Bool {
         guard !isFullscreenCovered, !isConcealed else { return false }
-        return NowPlayingModel.shared.snapshot.hasTrack || PasteQueue.shared.isActive
+        let activity = closedActivity
+        guard activity != .none else { return false }
+        // Flanks that would cover the frontmost app's menu titles stay folded:
+        // the menu is the thing the user came to the top of the screen for.
+        return !menuTitlesBlockFlanks(width: flankWidth(for: activity))
+    }
+
+    /// Whether a flank of `width` on either side of the cutout would land on a
+    /// menu title.
+    private func menuTitlesBlockFlanks(width: CGFloat) -> Bool {
+        guard let screen = NotchGeometry.screen(for: displayID) else { return false }
+        // A title ending a hair short of the flank still looks crowded.
+        let margin: CGFloat = 6
+        let half = closedSize.width / 2
+        let band = CGRect(x: 0, y: screen.frame.maxY - closedSize.height,
+                          width: width + margin, height: closedSize.height)
+        let left = band.offsetBy(dx: screen.frame.midX - half - width - margin, dy: 0)
+        let right = band.offsetBy(dx: screen.frame.midX + half, dy: 0)
+        let menus = MenuBarObstruction.shared
+        return menus.obstructs(left) || menus.obstructs(right)
+    }
+
+    /// Like Dynamic Island, only something live earns the flanks: paused
+    /// media folds back into a plain notch once `NowPlayingModel` stops
+    /// calling it live.
+    var closedActivity: ClosedActivity {
+        if PasteQueue.shared.isActive { return .pasteQueue }
+        if PomodoroTimer.shared.isLive { return .pomodoro }
+        if NowPlayingModel.shared.isLive { return .media }
+        return .none
     }
 
     /// Closed footprint, widened so live content sits beside the physical cutout
@@ -157,7 +215,11 @@ final class NotchController: ObservableObject {
 
     func close() {
         hoverCloseTask?.cancel()
+        dragCloseTask?.cancel()
+        dragCloseTask = nil
         gestureTravel = 0
+        openedForDrag = false
+        isShelfDropTargeted = false
         guard isOpen else { return }
         previewItem = nil
         isOpen = false
@@ -175,6 +237,10 @@ final class NotchController: ObservableObject {
         guard Settings.shared.openOnHover, !isConcealed else { return }
         hoverCloseTask?.cancel()
         if inside {
+            // Hover tracking is back, so it owns closing again.
+            openedForDrag = false
+            dragCloseTask?.cancel()
+            dragCloseTask = nil
             guard !isFullscreenCovered else { return }
             hoverCloseTask = Task { [weak self] in
                 // Small dwell so a cursor crossing the notch does not open it.
@@ -187,6 +253,35 @@ final class NotchController: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(220))
                 guard !Task.isCancelled else { return }
                 guard self?.previewItem == nil else { return }
+                self?.close()
+            }
+        }
+    }
+
+    // MARK: - File drags
+
+    /// A file drag reached the notch: open straight onto the shelf.
+    func fileDragEntered() {
+        hoverCloseTask?.cancel()
+        guard !isOpen || tab != .shelf else { return }
+        if !isOpen { openedForDrag = true }
+        previewItem = nil
+        open(tab: .shelf)
+    }
+
+    /// Pointer position relative to a panel opened by a drag, reported by the
+    /// pointer monitor. Leaving closes it after the same grace as hover does;
+    /// coming back in time keeps it open.
+    func dragPointerMoved(inside: Bool) {
+        guard isOpen, openedForDrag else { return }
+        if inside {
+            dragCloseTask?.cancel()
+            dragCloseTask = nil
+        } else if dragCloseTask == nil {
+            dragCloseTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(260))
+                guard !Task.isCancelled else { return }
+                self?.dragCloseTask = nil
                 self?.close()
             }
         }

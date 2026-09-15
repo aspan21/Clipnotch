@@ -5,76 +5,59 @@ struct SettingsView: View {
     @ObservedObject var store = ClipStore.shared
     @ObservedObject var access = AccessibilityGuard.shared
 
-    /// Russian plurals take three forms, so the count decides the word.
-    private static func dayWord(_ count: Int) -> String {
-        plural(count, one: "день", few: "дня", many: "дней")
-    }
-
-    private static func clipWord(_ count: Int) -> String {
-        plural(count, one: "клип", few: "клипа", many: "клипов")
-    }
-
-    private static func plural(_ count: Int, one: String, few: String, many: String) -> String {
-        let mod100 = count % 100
-        if (11...14).contains(mod100) { return many }
-        switch count % 10 {
-        case 1: return one
-        case 2...4: return few
-        default: return many
-        }
-    }
-
     var body: some View {
         Form {
-            Section("История") {
+            Section("History") {
                 Stepper(value: $settings.retentionItems, in: 10...2000, step: 10) {
-                    LabeledContent("Хранить не более", value: "\(settings.retentionItems) \(Self.clipWord(settings.retentionItems))")
+                    LabeledContent("Keep Up To", value: String(localized: "\(settings.retentionItems) clips"))
                 }
                 Stepper(value: $settings.retentionDays, in: 0...90) {
-                    LabeledContent("Удалять через",
+                    LabeledContent("Delete After",
                                    value: settings.retentionDays == 0
-                                       ? "никогда"
-                                       : "\(settings.retentionDays) \(Self.dayWord(settings.retentionDays))")
+                                       ? String(localized: "Never")
+                                       : String(localized: "\(settings.retentionDays) days"))
                 }
-                Toggle("Пропускать содержимое, помеченное менеджерами паролей как приватное", isOn: $settings.skipConcealed)
+                Toggle("Skip items that password managers mark as private", isOn: $settings.skipConcealed)
 
-                LabeledContent("Сейчас хранится") {
-                    Text("\(store.items.count) \(Self.clipWord(store.items.count)) · \(ByteCountFormatter.string(fromByteCount: store.diskUsage, countStyle: .file))")
+                LabeledContent("Stored Now") {
+                    Text(verbatim: String(localized: "\(store.items.count) clips")
+                        + " · "
+                        + ByteCountFormatter.string(fromByteCount: store.diskUsage, countStyle: .file))
                         .foregroundStyle(.secondary)
                 }
 
                 HStack {
-                    Button("Очистить историю") { store.deleteAll() }
-                    Button("Показать в Finder") { store.revealInFinder() }
+                    Button("Clear History") { store.deleteAll() }
+                    Button("Show in Finder") { store.revealInFinder() }
                     Spacer()
                 }
             }
 
-            Section("Панель") {
-                Toggle("Открывать при наведении", isOn: $settings.openOnHover)
-                Toggle("Показывать поверх полноэкранных приложений (нужен перезапуск)", isOn: $settings.showOverFullscreen)
+            Section("Panel") {
+                Toggle("Open on hover", isOn: $settings.openOnHover)
+                Toggle("Show over full-screen apps (requires restart)", isOn: $settings.showOverFullscreen)
                 Stepper(value: $settings.notchHeightOverride, in: 0...48, step: 1) {
-                    LabeledContent("Своя высота",
+                    LabeledContent("Custom Height",
                                    value: settings.notchHeightOverride == 0
-                                       ? "авто"
-                                       : "\(Int(settings.notchHeightOverride)) pt")
+                                       ? String(localized: "Automatic")
+                                       : String(localized: "\(Int(settings.notchHeightOverride)) pt"))
                 }
             }
 
-            Section("Очередь вставки") {
-                LabeledContent("Доступ к Универсальному доступу") {
+            Section("Paste Queue") {
+                LabeledContent("Accessibility") {
                     HStack(spacing: 8) {
-                        Text(access.isTrusted ? "Выдан" : "Не выдан")
+                        Text(access.isTrusted ? String(localized: "Allowed") : String(localized: "Not Allowed"))
                             .foregroundStyle(access.isTrusted ? .green : .orange)
                         if !access.isTrusted {
-                            Button("Открыть настройки") { access.openSystemSettings() }
+                            Button("Open Settings") { access.openSystemSettings() }
                         }
                     }
                 }
                 Stepper(value: $settings.advanceDelayMs, in: 50...600, step: 25) {
-                    LabeledContent("Задержка подмены после \u{2318}V", value: "\(settings.advanceDelayMs) мс")
+                    LabeledContent("Swap Delay After \u{2318}V", value: String(localized: "\(settings.advanceDelayMs) ms"))
                 }
-                Text("Увеличьте задержку, если приложение иногда вставляет предыдущий клип.")
+                Text("Increase the delay if an app sometimes pastes the previous clip.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -105,7 +88,7 @@ final class SettingsWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Настройки Clipnotch"
+        window.title = String(localized: "Clipnotch Settings")
         window.contentView = hosting
         window.isReleasedWhenClosed = false
         window.center()

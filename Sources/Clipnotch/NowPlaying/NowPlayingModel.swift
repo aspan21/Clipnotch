@@ -14,6 +14,12 @@ final class NowPlayingModel: ObservableObject {
     @Published private(set) var unavailableReason = ""
     /// Ticks while playing so the progress bar animates without a stream update.
     @Published private(set) var position: Double = 0
+    /// Worth showing in the closed notch: playing, or paused for less than
+    /// `pauseLinger`. A pause that sticks folds the notch back to plain black.
+    @Published private(set) var isLive = false
+
+    private static let pauseLinger = Duration.seconds(3)
+    private var lingerTask: Task<Void, Never>?
 
     private var bridge: MediaRemoteBridge?
     private var ticker: Timer?
@@ -25,7 +31,7 @@ final class NowPlayingModel: ObservableObject {
     func start() {
         guard let bridge = MediaRemoteBridge() else {
             isUnavailable = true
-            unavailableReason = "Adapter resources are missing from the app bundle."
+            unavailableReason = String(localized: "Adapter resources are missing from the app bundle.")
             return
         }
         self.bridge = bridge
@@ -56,6 +62,7 @@ final class NowPlayingModel: ObservableObject {
     }
 
     func stop() {
+        lingerTask?.cancel()
         ticker?.invalidate()
         ticker = nil
         bridge?.stop()
@@ -102,6 +109,7 @@ final class NowPlayingModel: ObservableObject {
         let trackChanged = new.title != snapshot.title || new.artist != snapshot.artist
         snapshot = new
         if !scrubbing { position = new.position() }
+        updateLiveness()
 
         if artworkChanged {
             artwork = newArtwork
@@ -109,6 +117,26 @@ final class NowPlayingModel: ObservableObject {
         } else if trackChanged && newArtwork == nil && !new.hasTrack {
             artwork = nil
             artworkAccent = .white
+        }
+    }
+
+    private func updateLiveness() {
+        if snapshot.hasTrack, snapshot.isPlaying {
+            lingerTask?.cancel()
+            lingerTask = nil
+            if !isLive { isLive = true }
+        } else if !snapshot.hasTrack {
+            // The player went away; nothing to linger over.
+            lingerTask?.cancel()
+            lingerTask = nil
+            if isLive { isLive = false }
+        } else if isLive, lingerTask == nil {
+            lingerTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.pauseLinger)
+                guard !Task.isCancelled else { return }
+                self?.isLive = false
+                self?.lingerTask = nil
+            }
         }
     }
 

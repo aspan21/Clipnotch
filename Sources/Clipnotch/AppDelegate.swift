@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ClipboardMonitor.shared.start()
 
         FullscreenDetector.shared.start()
+        MenuBarObstruction.shared.start()
         NotchManager.shared.start()
         menuBar.install()
         registerHotKey()
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NowPlayingModel.shared.stop()
         AccessibilityGuard.shared.stopMonitoring()
         FullscreenDetector.shared.stop()
+        MenuBarObstruction.shared.stop()
         NotchManager.shared.stop()
     }
 

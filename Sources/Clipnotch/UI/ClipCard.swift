@@ -47,12 +47,12 @@ struct ClipCard: View {
         .animation(Theme.quick, value: isHovering)
         .animation(Theme.snap, value: queuePosition)
         .onHover { isHovering = $0 }
-        .help(helpText)
+        .help(Text(verbatim: helpText))
         .contextMenu {
             if item.kind == .image {
                 Button("Preview", action: onPreview)
             }
-            Button(isQueued ? "Remove from queue" : "Add to queue", action: onTap)
+            Button(isQueued ? String(localized: "Remove from Queue") : String(localized: "Add to Queue"), action: onTap)
             Divider()
             Button("Delete", action: onDelete)
         }
@@ -140,9 +140,9 @@ struct ClipCard: View {
             if isHovering {
                 HStack(spacing: 6) {
                     if item.kind == .image {
-                        CardAction(symbol: "eye", help: "Preview", action: onPreview)
+                        CardAction(symbol: "eye", help: String(localized: "Preview"), action: onPreview)
                     }
-                    CardAction(symbol: "trash", help: "Delete", action: onDelete)
+                    CardAction(symbol: "trash", help: String(localized: "Delete"), action: onDelete)
                 }
                 .padding(6)
                 .transition(.opacity)
@@ -152,12 +152,12 @@ struct ClipCard: View {
 
     private var firstFileName: String {
         (item.textPreview ?? "").split(separator: "\n").first
-            .map { URL(fileURLWithPath: String($0)).lastPathComponent } ?? "File"
+            .map { URL(fileURLWithPath: String($0)).lastPathComponent } ?? String(localized: "File")
     }
 
     private var helpText: String {
-        if isQueued { return "Queued — click to remove" }
-        return "Click to add to the paste queue"
+        if isQueued { return String(localized: "In queue — click to remove") }
+        return String(localized: "Click to add to the paste queue")
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
@@ -168,7 +168,7 @@ struct ClipCard: View {
 
     static func relative(_ date: Date) -> String {
         let elapsed = Date().timeIntervalSince(date)
-        if elapsed < 60 { return "now" }
+        if elapsed < 60 { return String(localized: "now") }
         return relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }

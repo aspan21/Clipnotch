@@ -100,6 +100,21 @@ enum NotchGeometry {
     /// Extra width on each side of the strip that still counts as "at the notch".
     static let peekZoneSlack: CGFloat = 40
 
+    /// Band that opens the shelf when a file drag reaches it. More forgiving
+    /// than the peek zone: the pointer is carrying something and aiming is harder.
+    static func dragZone(on screen: NSScreen, closedSize: CGSize) -> NSRect {
+        let width = closedSize.width + 2 * 70
+        let height = max(closedSize.height, 24) + 12
+        return NSRect(x: screen.frame.midX - width / 2, y: screen.frame.maxY - height,
+                      width: width, height: height)
+    }
+
+    /// Screen rect of a panel of `size` hanging from the top centre of `screen`.
+    static func panelFrame(on screen: NSScreen, size: CGSize) -> NSRect {
+        NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
+               width: size.width, height: size.height)
+    }
+
     static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
         screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
     }

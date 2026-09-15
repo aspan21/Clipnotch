@@ -39,8 +39,8 @@ struct QueueBar: View {
             }
 
             Text(queue.queue.count == 1
-                 ? "Press \u{2318}V to paste it"
-                 : "Press \u{2318}V \(queue.queue.count) times, in order")
+                 ? String(localized: "Press \u{2318}V to paste")
+                 : String(localized: "Press \u{2318}V \(queue.queue.count) times to paste in order"))
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.secondaryText)
 
@@ -56,7 +56,7 @@ struct QueueBar: View {
             Image(systemName: "hand.tap")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Theme.tertiaryText)
-            Text("Click clips in the order you want them, then paste with \u{2318}V")
+            Text("Click clips in order, then paste them with \u{2318}V")
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.tertiaryText)
             Spacer()
@@ -68,12 +68,12 @@ struct QueueBar: View {
             Image(systemName: "lock.shield")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.orange)
-            Text("Sequential paste needs Accessibility access. Clicking a clip just copies it for now.")
+            Text("Paste in order requires Accessibility access. Until then, clicking a clip copies it.")
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
             Spacer()
-            Button("Grant") {
+            Button("Allow") {
                 // The prompt only appears once per signature, so a second press
                 // has to reach the Settings pane instead. Ask either way: the
                 // "already asked" flag can go stale — a `tccutil reset` makes

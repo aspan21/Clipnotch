@@ -23,6 +23,8 @@ cp "$BIN" "${CONTENTS}/MacOS/${APP_NAME}"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
 cp Resources/mediaremote-adapter.pl "${CONTENTS}/Resources/"
 cp -R Resources/MediaRemoteAdapter.framework "${CONTENTS}/Resources/"
+# UI strings; the system picks the language from the user's preferred ones.
+cp -R Resources/Localization/*.lproj "${CONTENTS}/Resources/"
 printf 'APPL????' > "${CONTENTS}/PkgInfo"
 
 # TCC ties the Accessibility grant to the signature. An ad-hoc signature is

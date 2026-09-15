@@ -53,10 +53,10 @@ struct ClipItem: Identifiable, Codable, Equatable {
             return ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)
         case .files:
             let count = (textPreview ?? "").split(separator: "\n").count
-            return count == 1 ? "1 file" : "\(count) files"
+            return String(localized: "\(count) files")
         case .text, .richText:
             let chars = textPreview?.count ?? 0
-            return chars == 1 ? "1 char" : "\(chars) chars"
+            return String(localized: "\(chars) characters")
         }
     }
 }
