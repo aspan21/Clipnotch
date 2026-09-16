@@ -9,10 +9,11 @@ struct PomodoroPane: View {
         HStack(spacing: 28) {
             PomodoroDial(timer: timer, diameter: 140)
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 PhasePicker(timer: timer)
                 rounds
                 controls
+                DurationStepper(timer: timer)
             }
             .frame(width: 290, alignment: .leading)
         }
@@ -68,14 +69,14 @@ struct PomodoroPane: View {
                 .opacity(timer.hasProgress ? 1 : 0.4)
                 .disabled(!timer.hasProgress)
             TransportButton(
-                symbol: timer.isRunning ? "pause.fill" : "play.fill",
+                symbol: timer.isRunning(timer.phase) ? "pause.fill" : "play.fill",
                 glyph: 16,
                 side: 44,
                 prominent: true,
                 tint: timer.phase.tint,
                 action: timer.toggle
             )
-            .help(timer.isRunning ? String(localized: "Pause") : String(localized: "Start"))
+            .help(timer.isRunning(timer.phase) ? String(localized: "Pause") : String(localized: "Start"))
             TransportButton(symbol: "forward.end.fill", glyph: 12, side: 34, action: timer.skip)
                 .help(String(localized: "Skip"))
 
@@ -92,53 +93,36 @@ struct PomodoroPane: View {
             .symbolEffect(.variableColor.iterative, isActive: chime.isPlaying)
             .help(chime.isPlaying ? String(localized: "Stop Sound") : String(localized: "Play Sound"))
         }
-        .animation(Theme.snap, value: timer.isRunning)
+        .animation(Theme.snap, value: timer.runningPhase)
         .animation(Theme.snap, value: chime.isPlaying)
         .animation(.easeInOut(duration: 0.4), value: timer.phase)
     }
 }
 
-/// A sixty-minute face, like a kitchen timer: the arc runs from twelve
-/// o'clock to the time left, and drains back towards twelve as the clock runs.
-/// While stopped, dragging round the ring sets the time; a second lap goes
-/// past the hour.
+/// The phase on one face: the ring is full when the phase starts and drains
+/// to nothing as it runs, so a five-minute break reads exactly like a
+/// twenty-five-minute focus round. The length itself is set from the stepper
+/// beside it, not by winding the dial.
 struct PomodoroDial: View {
     @ObservedObject var timer: PomodoroTimer
     let diameter: CGFloat
 
-    @State private var isHovering = false
-    @State private var isDragging = false
-    /// Minutes under the pointer during a drag, fractional; carries the lap.
-    @State private var dragMinutes: Double = 0
-    @State private var lastAngle: Double?
-    @State private var hasPushedCursor = false
-
     private var lineWidth: CGFloat { diameter * 0.055 }
-    private var isAdjustable: Bool { !timer.isRunning }
+    /// The dial shows the phase the pane is on, so it only ticks when that
+    /// phase is the one running.
+    private var isTicking: Bool { timer.isRunning(timer.phase) }
 
     var body: some View {
         // Frame-rate updates only while running; a stopped dial is a still image.
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !timer.isRunning)) { context in
-            let remaining = timer.remaining(at: context.date)
-            let breath = timer.isRunning
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isTicking)) { context in
+            let remaining = timer.remaining(of: timer.phase, at: context.date)
+            let breath = isTicking
                 ? (sin(context.date.timeIntervalSinceReferenceDate * .pi / 2) + 1) / 2
                 : 0
 
             dial(remaining: remaining, breath: breath)
         }
         .frame(width: diameter, height: diameter)
-        .contentShape(Circle())
-        .gesture(setTimeGesture)
-        .onHover { hovering in
-            isHovering = hovering
-            updateCursor()
-        }
-        .onChange(of: timer.isRunning) { _, _ in updateCursor() }
-        .onDisappear {
-            isHovering = false
-            updateCursor()
-        }
-        .help(isAdjustable ? String(localized: "Drag around the ring to set the time") : "")
         .keyframeAnimator(initialValue: CGFloat(1), trigger: timer.finishCount) { content, scale in
             content.scaleEffect(scale)
         } keyframes: { _ in
@@ -151,11 +135,8 @@ struct PomodoroDial: View {
     private func dial(remaining: TimeInterval, breath: Double) -> some View {
         let tint = timer.phase.tint
         let radius = (diameter - lineWidth) / 2
-        let face = remaining / 3600
-        let lap = min(face, 1)
-        let extra = max(0, min(face - 1, 1))
-        let head = face > 1 ? extra : lap
-        let grabbable = isAdjustable && (isHovering || isDragging)
+        let total = timer.duration(of: timer.phase)
+        let left = total > 0 ? min(max(remaining / total, 0), 1) : 0
 
         return ZStack {
             // Glow that breathes behind the ring while the clock runs.
@@ -163,27 +144,23 @@ struct PomodoroDial: View {
                 .fill(tint)
                 .frame(width: diameter * 0.72, height: diameter * 0.72)
                 .blur(radius: diameter * 0.2)
-                .opacity(timer.isRunning ? 0.14 + 0.12 * breath : 0.05)
+                .opacity(isTicking ? 0.14 + 0.12 * breath : 0.05)
 
-            Ticks(lit: face, tint: tint)
+            Ticks(count: timer.minutes(of: timer.phase), lit: left, tint: tint)
                 .padding(lineWidth * 2.1)
 
             Circle()
                 .stroke(Color.white.opacity(0.07), lineWidth: lineWidth)
 
-            arc(to: lap, tint: tint, dimmed: face > 1)
-            if face > 1 {
-                arc(to: extra, tint: tint, dimmed: false)
-            }
+            arc(to: left, tint: tint)
 
-            // Leading edge, lit like the tip of a fuse. Doubles as the handle.
+            // Leading edge, lit like the tip of a fuse.
             Circle()
                 .fill(Color.white)
-                .frame(width: lineWidth * (grabbable ? 1.8 : 1.35),
-                       height: lineWidth * (grabbable ? 1.8 : 1.35))
-                .shadow(color: tint, radius: timer.isRunning ? 4 + 3 * breath : (grabbable ? 6 : 2))
+                .frame(width: lineWidth * 1.35, height: lineWidth * 1.35)
+                .shadow(color: tint, radius: isTicking ? 4 + 3 * breath : 2)
                 .offset(y: -radius)
-                .rotationEffect(.degrees(360 * head))
+                .rotationEffect(.degrees(360 * left))
                 .opacity(remaining > 0 ? 1 : 0)
 
             VStack(spacing: 2) {
@@ -192,7 +169,7 @@ struct PomodoroDial: View {
                     .font(.system(size: size, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Theme.primaryText)
-                    .contentTransition(.numericText(countsDown: timer.isRunning))
+                    .contentTransition(.numericText(countsDown: isTicking))
                     .animation(Theme.snap, value: Int(remaining.rounded(.up)))
 
                 Text(timer.phase.title.uppercased())
@@ -204,18 +181,16 @@ struct PomodoroDial: View {
                     .frame(maxWidth: diameter * 0.68)
             }
         }
-        .animation(Theme.quick, value: grabbable)
-        .animation(isDragging ? .interactiveSpring(response: 0.18, dampingFraction: 1) : nil, value: timer.pausedRemaining)
         .animation(.spring(response: 0.6, dampingFraction: 0.85), value: timer.revision)
         .animation(.easeInOut(duration: 0.5), value: timer.phase)
     }
 
-    private func arc(to fraction: Double, tint: Color, dimmed: Bool) -> some View {
+    private func arc(to fraction: Double, tint: Color) -> some View {
         Circle()
             .trim(from: 0, to: fraction)
             .stroke(
                 AngularGradient(
-                    colors: dimmed ? [tint.opacity(0.35), tint.opacity(0.35)] : [tint.opacity(0.4), tint],
+                    colors: [tint.opacity(0.4), tint],
                     center: .center,
                     startAngle: .degrees(0),
                     endAngle: .degrees(360 * max(fraction, 0.001))
@@ -224,83 +199,32 @@ struct PomodoroDial: View {
             )
             .rotationEffect(.degrees(-90))
     }
-
-    // MARK: - Setting the time
-
-    /// Open hand over a dial that can be wound; kept balanced, since an
-    /// unmatched pop would take someone else's cursor off the stack.
-    private func updateCursor() {
-        let wanted = isHovering && isAdjustable
-        guard wanted != hasPushedCursor else { return }
-        if wanted { NSCursor.openHand.push() } else { NSCursor.pop() }
-        hasPushedCursor = wanted
-    }
-
-    private var setTimeGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                guard isAdjustable else { return }
-                let angle = Self.angle(of: value.location, in: diameter)
-
-                if let previous = lastAngle {
-                    // Accumulate the change rather than reading the absolute
-                    // angle, so crossing twelve o'clock keeps winding instead
-                    // of jumping back to zero.
-                    var delta = angle - previous
-                    if delta > 180 { delta -= 360 }
-                    if delta < -180 { delta += 360 }
-                    dragMinutes += delta / 6
-                } else {
-                    // First touch jumps to where the pointer is, within the
-                    // current lap.
-                    let current = Double(timer.minutes(of: timer.phase))
-                    let lapBase = current > 60 ? 60.0 : 0
-                    dragMinutes = lapBase + angle / 6
-                    isDragging = true
-                }
-                lastAngle = angle
-
-                let range = PomodoroTimer.minuteRange
-                dragMinutes = min(max(dragMinutes, Double(range.lowerBound)), Double(range.upperBound))
-                let minutes = Int(dragMinutes.rounded())
-                if minutes != timer.minutes(of: timer.phase) {
-                    timer.setMinutes(minutes)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-                }
-            }
-            .onEnded { _ in
-                lastAngle = nil
-                isDragging = false
-            }
-    }
-
-    /// Clockwise degrees from twelve o'clock, 0..<360.
-    private static func angle(of point: CGPoint, in diameter: CGFloat) -> Double {
-        let dx = Double(point.x - diameter / 2)
-        let dy = Double(point.y - diameter / 2)
-        let degrees = atan2(dx, -dy) * 180 / .pi
-        return degrees < 0 ? degrees + 360 : degrees
-    }
 }
 
-/// Minute marks inside the ring; the ones covered by the arc are lit.
+/// Marks inside the ring; the ones covered by the arc are lit. One per minute
+/// of the phase, so a short break gets a coarse scale rather than a crowded
+/// hour face, down to a floor that keeps a one-minute phase from having a
+/// single mark.
 private struct Ticks: View {
-    /// Remaining time as a fraction of the hour; past 1 everything is lit.
+    /// Minutes in the phase.
+    let count: Int
+    /// Remaining time as a fraction of the phase.
     let lit: Double
     let tint: Color
 
-    private static let count = 60
+    private var marks: Int { min(max(count, 12), 60) }
 
     var body: some View {
         Canvas { context, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let outer = min(size.width, size.height) / 2
-            let litCount = Int((lit * Double(Self.count)).rounded(.up))
+            let count = marks
+            let litCount = Int((lit * Double(count)).rounded(.up))
 
-            for index in 0..<Self.count {
+            for index in 0..<count {
                 let major = index % 5 == 0
                 let length: CGFloat = major ? 5 : 2.5
-                let angle = Double(index) / Double(Self.count) * 2 * .pi - .pi / 2
+                let angle = Double(index) / Double(count) * 2 * .pi - .pi / 2
                 let direction = CGPoint(x: cos(angle), y: sin(angle))
 
                 var path = Path()
@@ -343,6 +267,17 @@ private struct PhasePicker: View {
                                     .matchedGeometryEffect(id: "phase", in: selection)
                             }
                         }
+                        // A phase keeps running while another one is on show,
+                        // and the dial cannot say so: the dot does.
+                        .overlay(alignment: .topTrailing) {
+                            if timer.isRunning(phase) && !isSelected {
+                                Circle()
+                                    .fill(phase.tint)
+                                    .frame(width: 5, height: 5)
+                                    .offset(x: -1, y: 1)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
                         .contentShape(Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -351,5 +286,142 @@ private struct PhasePicker: View {
         .padding(2)
         .background(Capsule(style: .continuous).fill(Color.white.opacity(0.05)))
         .animation(Theme.snap, value: timer.phase)
+        .animation(Theme.snap, value: timer.runningPhase)
+    }
+}
+
+/// Sets the current phase's length, in whole minutes, as a number rather than
+/// as an angle. The panel is a non-activating window and never becomes key, so
+/// a text field could not be typed into: the value is driven by a pair of
+/// buttons that repeat, and then accelerate, while held.
+private struct DurationStepper: View {
+    @ObservedObject var timer: PomodoroTimer
+
+    private var minutes: Int { timer.minutes(of: timer.phase) }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(String(localized: "Length"))
+                .font(.system(size: 10.5, weight: .medium))
+                .tracking(Theme.tracking(forSize: 10.5))
+                .foregroundStyle(Theme.tertiaryText)
+
+            HStack(spacing: 2) {
+                StepButton(
+                    symbol: "minus",
+                    enabled: minutes > PomodoroTimer.minuteRange.lowerBound,
+                    help: String(localized: "Shorter")
+                ) { changing(by: -$0) }
+
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text("\(minutes)")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.primaryText)
+                        .contentTransition(.numericText())
+                    Text(String(localized: "min"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                // Fixed width, so the row does not shuffle as the number grows
+                // a digit under a held button.
+                .frame(width: 54)
+
+                StepButton(
+                    symbol: "plus",
+                    enabled: minutes < PomodoroTimer.minuteRange.upperBound,
+                    help: String(localized: "Longer")
+                ) { changing(by: $0) }
+            }
+            .padding(3)
+            .background(Capsule(style: .continuous).fill(Color.white.opacity(0.05)))
+        }
+        .animation(Theme.snap, value: minutes)
+        .animation(Theme.snap, value: timer.phase)
+    }
+
+    /// Reports whether the nudge actually moved the value, so a held button
+    /// stops buzzing once it is pinned to the end of the range.
+    private func changing(by delta: Int) -> Bool {
+        let before = minutes
+        timer.adjustMinutes(by: delta)
+        return minutes != before
+    }
+}
+
+/// One end of the stepper. A press fires once, and keeps firing if it is held,
+/// in bigger steps the longer the hold — an hour is reachable without sixty
+/// clicks, and a single minute is still one tap.
+private struct StepButton: View {
+    let symbol: String
+    let enabled: Bool
+    let help: String
+    /// Returns false once the value can go no further.
+    let step: (Int) -> Bool
+
+    @State private var isHovering = false
+    @State private var isPressed = false
+    @State private var repeatTask: Task<Void, Never>?
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(enabled ? Theme.primaryText : Theme.tertiaryText)
+            .frame(width: 26, height: 26)
+            .background(
+                Circle().fill(
+                    isPressed && enabled
+                        ? Theme.cardFillHover
+                        : (isHovering && enabled ? Theme.cardFill : Color.clear)
+                )
+            )
+            .contentShape(Circle())
+            .onHover { isHovering = $0 }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !isPressed else { return }
+                        isPressed = true
+                        begin()
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                        repeatTask?.cancel()
+                        repeatTask = nil
+                    }
+            )
+            .onDisappear {
+                repeatTask?.cancel()
+                repeatTask = nil
+            }
+            .animation(Theme.quick, value: isHovering)
+            .animation(Theme.quick, value: isPressed)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(help)
+            .help(help)
+    }
+
+    private func begin() {
+        guard enabled else { return }
+        fire(1)
+        repeatTask?.cancel()
+        repeatTask = Task { @MainActor in
+            // A beat before the repeat starts, so a plain click stays a click.
+            try? await Task.sleep(for: .milliseconds(420))
+            var ticks = 0
+            while !Task.isCancelled {
+                ticks += 1
+                let fast = ticks > 10
+                guard fire(fast ? 5 : 1) else { break }
+                try? await Task.sleep(for: .milliseconds(fast ? 110 : 75))
+            }
+        }
+    }
+
+    @discardableResult
+    private func fire(_ delta: Int) -> Bool {
+        guard step(delta) else { return false }
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        return true
     }
 }

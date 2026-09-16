@@ -4,6 +4,11 @@ import SwiftUI
 /// Focus/break cycle: four focus rounds, a short break after each, a long one
 /// after the fourth.
 ///
+/// Every phase keeps its own remaining time, but only one of them ever ticks:
+/// `runningPhase`. Picking a phase in the pane only changes what is shown —
+/// pressing play is what moves the clock, and starting one phase parks
+/// whichever other one was running until someone comes back to it.
+///
 /// Time is stored as an end date rather than a ticking counter, so nothing
 /// publishes every second: views that show the clock read it off a
 /// `TimelineView`, and the only published changes are the discrete ones.
@@ -40,37 +45,46 @@ final class PomodoroTimer: ObservableObject {
     /// How long the closed notch keeps showing a finished phase.
     private static let finishLinger = Duration.seconds(4)
 
+    /// The phase the pane is showing. Not necessarily the one that is running.
     @Published private(set) var phase: Phase = .focus
-    @Published private(set) var isRunning = false
+    /// The one phase counting down, if any.
+    @Published private(set) var runningPhase: Phase?
     /// Focus rounds finished in the current cycle, 0...roundsPerCycle.
     @Published private(set) var completedRounds = 0
     /// Briefly true after a phase runs out, so the closed notch can say so.
     @Published private(set) var justFinished = false
     /// Bumped on every finished phase; drives the completion pulse.
     @Published private(set) var finishCount = 0
-    /// Bumped on every discrete jump (reset, skip, phase change), so the dial
-    /// springs to its new value instead of snapping.
+    /// Bumped on every discrete jump (reset, skip, length change, phase
+    /// change), so the dial springs to its new value instead of snapping.
     @Published private(set) var revision = 0
-    /// Remaining time of the current phase while it is not running. Published
-    /// so dragging the dial redraws it.
-    @Published private(set) var pausedRemaining: TimeInterval = 25 * 60
 
     private var endDate: Date?
-    /// Where each phase was left off, so switching away and back resumes it
-    /// instead of starting over.
-    private var parked: [Phase: TimeInterval] = [:]
+    /// Where each phase stands while it is not the one running, so switching
+    /// away and back picks up from there instead of starting over.
+    private var remainders: [Phase: TimeInterval] = [:]
     private var completionTask: Task<Void, Never>?
     private var lingerTask: Task<Void, Never>?
 
-    private init() {
-        pausedRemaining = duration(of: .focus)
-    }
+    private init() {}
 
     /// Anything worth showing in the closed notch.
-    var isLive: Bool { isRunning || justFinished }
+    var isLive: Bool { runningPhase != nil || justFinished }
 
-    /// True once the current phase has been started and not reset.
-    var hasProgress: Bool { isRunning || pausedRemaining < duration(of: phase) }
+    /// Whichever phase the closed notch should report on: the running one, or
+    /// the shown one when nothing runs.
+    var livePhase: Phase { runningPhase ?? phase }
+
+    /// True while any phase counts down. For "is the shown one running", ask
+    /// `isRunning(_:)`.
+    var isRunning: Bool { runningPhase != nil }
+
+    func isRunning(_ phase: Phase) -> Bool { runningPhase == phase }
+
+    /// True once the shown phase has been started and not reset.
+    var hasProgress: Bool {
+        isRunning(phase) || (remainders[phase] ?? duration(of: phase)) < duration(of: phase)
+    }
 
     func duration(of phase: Phase) -> TimeInterval {
         TimeInterval(minutes(of: phase) * 60)
@@ -87,94 +101,114 @@ final class PomodoroTimer: ObservableObject {
         return min(max(value, Self.minuteRange.lowerBound), Self.minuteRange.upperBound)
     }
 
-    func remaining(at date: Date) -> TimeInterval {
-        guard isRunning, let endDate else { return pausedRemaining }
-        return max(0, endDate.timeIntervalSince(date))
+    func remaining(of phase: Phase, at date: Date) -> TimeInterval {
+        if runningPhase == phase, let endDate {
+            return max(0, endDate.timeIntervalSince(date))
+        }
+        return remainders[phase] ?? duration(of: phase)
     }
 
     /// 0 at the start of the phase, 1 when it runs out.
-    func progress(at date: Date) -> Double {
-        1 - remaining(at: date) / duration(of: phase)
+    func progress(of phase: Phase, at date: Date) -> Double {
+        let total = duration(of: phase)
+        guard total > 0 else { return 0 }
+        return 1 - remaining(of: phase, at: date) / total
     }
 
     // MARK: - Controls
 
     func toggle() {
-        isRunning ? pause() : start()
+        isRunning(phase) ? pause() : start()
     }
 
+    /// Starts the shown phase. Whatever else was running stops where it is:
+    /// one clock at a time.
     func start() {
-        guard !isRunning else { return }
+        guard runningPhase != phase else { return }
+        park()
         clearFinished()
         ChimePlayer.shared.stop()
-        let end = Date().addingTimeInterval(pausedRemaining)
+
+        let left = remainders[phase] ?? duration(of: phase)
+        let end = Date().addingTimeInterval(left)
         endDate = end
-        isRunning = true
+        runningPhase = phase
         scheduleCompletion(at: end)
     }
 
     func pause() {
-        guard isRunning else { return }
-        pausedRemaining = remaining(at: Date())
-        endDate = nil
-        isRunning = false
-        completionTask?.cancel()
+        park()
     }
 
-    /// Back to the top of the current phase.
+    /// Back to the top of the shown phase. If that is the phase running, it
+    /// keeps running, from the top.
     func reset() {
-        stop()
-        pausedRemaining = duration(of: phase)
+        restarting { remainders[phase] = duration(of: phase) }
+    }
+
+    /// Straight to the next phase, without counting this one as done. A clock
+    /// that was running follows along.
+    func skip() {
+        restarting {
+            remainders[phase] = duration(of: phase)
+            let upcoming = next(after: phase, countingRound: false)
+            phase = upcoming
+            remainders[upcoming] = duration(of: upcoming)
+        }
+    }
+
+    /// Shows `phase`. Nothing starts and nothing stops: a phase already
+    /// counting down keeps counting down behind the pane, and its tab keeps
+    /// the running dot.
+    func select(_ phase: Phase) {
+        guard phase != self.phase else { return }
+        self.phase = phase
         revision += 1
     }
 
-    /// Straight to the next phase, without counting this one as done.
-    func skip() {
-        stop()
-        parked[phase] = nil
-        enter(next(after: phase, countingRound: false), fresh: true)
-    }
-
-    /// Switches to `phase`, pausing the current one where it is. Coming back
-    /// later picks up from there.
-    func select(_ phase: Phase) {
-        guard phase != self.phase else { return }
-        pause()
-        clearFinished()
-        parked[self.phase] = pausedRemaining
-        enter(phase, fresh: false)
-    }
-
-    /// Sets the current phase's length, and starts it over at that length.
-    /// Only while the clock is stopped: the dial is not draggable while it runs.
+    /// Sets the shown phase's length, and starts it over at that length —
+    /// running or not, since the length is set from buttons rather than by
+    /// dragging the dial.
     func setMinutes(_ minutes: Int) {
-        guard !isRunning else { return }
         let value = min(max(minutes, Self.minuteRange.lowerBound), Self.minuteRange.upperBound)
-        let settings = Settings.shared
-        switch phase {
-        case .focus: settings.focusMinutes = value
-        case .shortBreak: settings.shortBreakMinutes = value
-        case .longBreak: settings.longBreakMinutes = value
+        guard value != self.minutes(of: phase) else { return }
+        restarting {
+            let settings = Settings.shared
+            switch phase {
+            case .focus: settings.focusMinutes = value
+            case .shortBreak: settings.shortBreakMinutes = value
+            case .longBreak: settings.longBreakMinutes = value
+            }
+            remainders[phase] = TimeInterval(value * 60)
         }
-        clearFinished()
-        parked[phase] = nil
-        pausedRemaining = TimeInterval(value * 60)
+    }
+
+    /// Nudges the shown phase's length, for the minus/plus stepper.
+    func adjustMinutes(by delta: Int) {
+        setMinutes(minutes(of: phase) + delta)
     }
 
     // MARK: - Internals
 
-    private func stop() {
-        completionTask?.cancel()
+    /// Applies a change to the shown phase and puts its clock back the way it
+    /// was found, so nothing but the pause button, another phase starting, or
+    /// the time running out leaves a running phase paused.
+    private func restarting(_ change: () -> Void) {
+        let wasRunning = isRunning(phase)
+        if wasRunning { park() }
         clearFinished()
-        endDate = nil
-        isRunning = false
+        change()
+        revision += 1
+        if wasRunning { start() }
     }
 
-    private func enter(_ phase: Phase, fresh: Bool) {
-        self.phase = phase
-        if fresh { parked[phase] = nil }
-        pausedRemaining = parked.removeValue(forKey: phase) ?? duration(of: phase)
-        revision += 1
+    /// Banks the running phase's remaining time and stops the clock.
+    private func park() {
+        guard let running = runningPhase else { return }
+        remainders[running] = remaining(of: running, at: Date())
+        endDate = nil
+        runningPhase = nil
+        completionTask?.cancel()
     }
 
     private func next(after phase: Phase, countingRound: Bool) -> Phase {
@@ -202,10 +236,16 @@ final class PomodoroTimer: ObservableObject {
     }
 
     private func finish() {
+        guard let done = runningPhase else { return }
         endDate = nil
-        isRunning = false
-        parked[phase] = nil
-        enter(next(after: phase, countingRound: true), fresh: true)
+        runningPhase = nil
+        // Both the phase that ran out and the one after it are left full, ready
+        // to be started again.
+        remainders[done] = duration(of: done)
+        let upcoming = next(after: done, countingRound: true)
+        remainders[upcoming] = duration(of: upcoming)
+        phase = upcoming
+        revision += 1
         ChimePlayer.shared.play()
 
         finishCount += 1

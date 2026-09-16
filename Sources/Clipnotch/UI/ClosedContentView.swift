@@ -98,11 +98,14 @@ private struct PomodoroPip: View {
     let side: CGFloat
 
     var body: some View {
-        let tint = timer.phase.tint
+        // The closed notch reports on the phase that is running, whatever the
+        // open pane happens to be showing.
+        let phase = timer.livePhase
+        let tint = phase.tint
         let ring = max(4, side * 0.78)
 
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let progress = timer.justFinished ? 0 : timer.progress(at: context.date)
+            let progress = timer.justFinished ? 0 : timer.progress(of: phase, at: context.date)
             ZStack {
                 Circle()
                     .stroke(tint.opacity(0.22), lineWidth: 2.5)
@@ -136,12 +139,14 @@ private struct PomodoroClock: View {
     @ObservedObject var timer: PomodoroTimer
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = timer.remaining(at: context.date)
+        let phase = timer.livePhase
+
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = timer.remaining(of: phase, at: context.date)
             Text(timer.justFinished ? String(localized: "Done") : PomodoroTimer.format(remaining))
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(timer.phase.tint)
+                .foregroundStyle(phase.tint)
                 .lineLimit(1)
                 .fixedSize()
                 .contentTransition(.numericText(countsDown: true))

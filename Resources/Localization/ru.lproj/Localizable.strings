@@ -14,7 +14,10 @@
 "Skip" = "Пропустить";
 "Play Sound" = "Прослушать звук";
 "Stop Sound" = "Остановить звук";
-"Drag around the ring to set the time" = "Проведите по кольцу, чтобы задать время";
+"Length" = "Длительность";
+"min" = "мин";
+"Shorter" = "Короче";
+"Longer" = "Дольше";
 "Done" = "Готово";
 "Clipboard Is Empty" = "Буфер обмена пуст";
 "Screenshots, text, and files you copy appear here." = "Здесь появятся скопированные снимки экрана, текст и файлы.";

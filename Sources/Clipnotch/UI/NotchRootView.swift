@@ -237,7 +237,7 @@ private struct NotchSidebar: View {
         case .shelf:
             return shelf.items.isEmpty ? nil : .count(shelf.items.count, Theme.primaryText)
         case .pomodoro:
-            return pomodoro.isRunning ? .dot(pomodoro.phase.tint) : nil
+            return pomodoro.runningPhase.map { .dot($0.tint) }
         case .nowPlaying:
             return nil
         }
