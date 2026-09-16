@@ -1,15 +1,86 @@
+<div align="center">
+
 # Clipnotch
 
-A macOS notch panel with two things in it: a universal Now Playing player and a
-clipboard history built for pasting several screenshots in a row.
+**The MacBook notch, put to work.** A now-playing player, a clipboard queue that
+pastes several screenshots in a row, a file shelf, and a pomodoro timer — all in
+a panel that unfolds from the hardware cutout.
+
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000?logo=apple&logoColor=white)
+![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-1575F9)
+![No dependencies](https://img.shields.io/badge/dependencies-none-2ea44f)
+
+<img src="docs/images/pomodoro.png" width="720" alt="Clipnotch panel open on the pomodoro tab">
+
+</div>
+
+---
+
+## Why
+
+The notch is dead screen area you look at all day. Clipnotch fills it with the
+four things that otherwise cost a window each — and stays out of the way the
+rest of the time: the closed strip only widens when something is actually
+happening, and the panel never steals focus from what you are typing in.
 
 Built for macOS 14+, tested on macOS 26.5. Inspired by
-[boring.notch](https://github.com/TheBoredTeam/boring.notch) but written from
-scratch and cut down to these two features.
+[boring.notch](https://github.com/TheBoredTeam/boring.notch), written from
+scratch. English and Russian.
 
-## The clipboard queue
+## The four panes
 
-The point of the clipboard pane is the paste queue:
+<table>
+<tr><td width="50%">
+
+### ♪ Now Playing
+
+<img src="docs/images/now-playing.png" alt="Now Playing pane">
+
+Artwork, title, artist, album, a draggable scrubber and transport. Reads the
+**system-wide** now-playing session, so it works for anything that publishes to
+it — Spotify, Apple Music, a YouTube tab, Yandex Music, VLC. The artwork flies
+between the closed strip and the open panel rather than fading.
+
+</td><td width="50%">
+
+### ⧉ Clipboard
+
+<img src="docs/images/clipboard.png" alt="Clipboard pane with a paste queue armed">
+
+Screenshots, text and files you copy, as cards. Click them **in order** to arm
+a paste queue, then press `⌘V` once per clip in the destination app. Preview an
+image full size, or delete a clip, from the card itself.
+
+</td></tr>
+<tr><td width="50%">
+
+### ⌸ Shelf
+
+<img src="docs/images/shelf.png" alt="Shelf pane holding dropped files">
+
+Drop files anywhere on the panel and they park here — then drag them out on a
+different display, without holding the mouse button down the whole journey.
+Items are references, not copies: the destination decides move or copy, and a
+file deleted on disk drops off the shelf.
+
+</td><td width="50%">
+
+### ◷ Pomodoro
+
+<img src="docs/images/pomodoro-break.png" alt="Pomodoro pane on a break phase">
+
+Four focus rounds, a short break after each, a long one after the fourth. Any
+length from 1 to 120 minutes, set from the stepper. Each phase keeps its own
+remaining time and exactly one of them ticks, so switching tabs to look at a
+break never stops the focus round that is running.
+
+</td></tr>
+</table>
+
+## The paste queue
+
+The point of the clipboard pane:
 
 1. Take several screenshots (`⌘⇧4`, straight to the clipboard as usual).
 2. Hover the notch, or press `⌘⇧V`, and open the **Clipboard** tab.
@@ -27,7 +98,90 @@ clip armed, but it can never break `⌘V`.
 Copying something new outside the app cancels the queue — that's the escape
 hatch, along with the **Clear** button and the menu bar item.
 
-### Accessibility permission
+## The pomodoro
+
+The dial is the phase itself, not a clock face: full when the phase starts,
+empty when it runs out, so a five-minute break reads exactly like a
+twenty-five-minute focus round. Tick marks are spaced one per minute of that
+phase.
+
+Time is stored as an end date, never a ticking counter — nothing in the app
+publishes once a second, and a sleeping Mac still counts down. Each phase keeps
+its own remaining time, and `runningPhase` names the one that ticks:
+
+| You do | What happens |
+|---|---|
+| Switch tabs | Nothing starts, nothing stops. The running phase keeps running, and its tab shows a dot |
+| Press play on another phase | The one that was running parks where it stands; the new one starts |
+| Press pause | That phase stops, and keeps its remaining time for later |
+| Change the length, reset, skip | The phase restarts at the top — still running, if it was running |
+| The phase runs out | The chime plays, the cycle advances, and the next phase waits on the line |
+
+## Install
+
+Needs only the Command Line Tools — no Xcode.
+
+```bash
+git clone https://github.com/aspan21/Clipnotch.git
+cd Clipnotch
+./build.sh          # -> build/Clipnotch.app
+open build/Clipnotch.app
+```
+
+`build.sh` runs SwiftPM, assembles the `.app` by hand, copies the adapter
+resources in, and signs it.
+
+## Controls
+
+| Action | How |
+|---|---|
+| Open / close panel | Hover the notch, or click it |
+| Open clipboard directly | `⌘⇧V` |
+| Switch pane | The icon rail down the left edge |
+| Add clip to queue | Click a card |
+| Remove from queue | Click a queued card again |
+| Preview an image full size | Hover a card, click the eye |
+| Delete a clip | Hover a card, click the trash |
+| Clear the queue | **Clear** in the queue bar |
+| Shelve files | Drop them anywhere on the panel, open or closed |
+| Start / pause a phase | Play on the phase you are looking at |
+| Set a phase length | **−** / **+** beside the dial; hold to run, and then to leap |
+| Settings, quit | Menu bar icon |
+
+## Settings
+
+| | |
+|---|---|
+| **History** | Cap by clips (default 200) and by age (default 7 days); skip what password managers mark private; clear now |
+| **Panel** | Open on hover; show over full-screen apps; notch height override for displays it guesses wrong |
+| **Paste Queue** | Accessibility status, and the delay between the intercepted paste and arming the next clip |
+
+## Under the hood
+
+**Now Playing.** Apple restricted the private MediaRemote framework in macOS
+15.4. The way around it is
+[mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) by Jonas
+van den Berg (BSD-3-Clause): the framework is loaded inside `/usr/bin/perl`,
+which is still entitled to use it, and now-playing state is streamed back as
+NDJSON. Progress is extrapolated from `elapsedTime` plus `playbackRate`, so the
+bar moves smoothly between stream updates.
+
+**The window.** One borderless, non-activating `NSPanel` above the menu bar,
+joined to a max-level private CoreGraphics space so it stays visible over
+full-screen apps. It never becomes key — which is why nothing in the panel is a
+text field.
+
+**The shape.** One animatable frame interpolates between the closed strip and
+the open panel; the content inside is pinned at full size and revealed, rather
+than re-laid-out on every frame.
+
+**History on disk.** Payloads live in
+`~/Library/Application Support/Clipnotch/`, images as PNG files plus a JSON
+index. Auto-purge runs on launch and after every insert, and deletes the files,
+not just the index entries. Content marked `org.nspasteboard.ConcealedType` is
+skipped and never written to disk.
+
+## Accessibility permission
 
 The event tap needs Accessibility access. Until it is granted, clicking a clip
 just copies it (no sequencing). Grant it in
@@ -70,65 +224,11 @@ rm key.pem bundle.p12   # the private key now lives in the keychain
 
 The certificate is self-signed and trusted only in this machine's user trust
 settings. It is for keeping a local TCC grant stable — it says nothing about
-the app's provenance to anyone else.
-
-The public certificate is kept at
+the app's provenance to anyone else. The public certificate is kept at
 `~/Library/Application Support/Clipnotch/local-signing-cert.pem`.
 
 After switching from ad-hoc to the certificate, remove and re-add Clipnotch in
 the Accessibility pane once — the old ad-hoc grant does not carry over.
-
-## Now Playing
-
-Reads the system-wide now-playing session, so it works for any player that
-publishes to it — Spotify, Apple Music, a YouTube tab, Yandex Music, VLC.
-
-Apple restricted the private MediaRemote framework in macOS 15.4. The way
-around it is [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)
-by Jonas van den Berg (BSD-3-Clause): the framework is loaded inside
-`/usr/bin/perl`, which is still entitled to use it, and now-playing state is
-streamed back as NDJSON. `Resources/mediaremote-adapter.pl` and
-`Resources/MediaRemoteAdapter.framework` are that project's artifacts.
-
-Shown: artwork, title, artist, album, a draggable progress bar, and
-previous/play-pause/next. Progress is extrapolated from `elapsedTime` plus
-`playbackRate` so the bar moves smoothly between stream updates.
-
-## History retention
-
-Payloads live in `~/Library/Application Support/Clipnotch/`, images as PNG files
-plus a JSON index. Auto-purge runs on launch and after every insert, and deletes
-the files, not just the index entries. Defaults: **200 clips** or **7 days**,
-whichever hits first. Both are adjustable in Settings, along with
-`Clear history now`.
-
-Content marked with `org.nspasteboard.ConcealedType` (what password managers
-set) is skipped and never written to disk.
-
-## Build
-
-Needs only the Command Line Tools — no Xcode.
-
-```bash
-./build.sh          # -> build/Clipnotch.app
-open build/Clipnotch.app
-```
-
-`build.sh` runs SwiftPM, assembles the `.app` by hand, copies the adapter
-resources in, and ad-hoc signs it.
-
-## Controls
-
-| Action | How |
-|---|---|
-| Open / close panel | Hover the notch, or click it |
-| Open clipboard directly | `⌘⇧V` |
-| Add clip to queue | Click a card |
-| Remove from queue | Click a queued card again |
-| Preview an image full size | Hover a card, click the eye |
-| Delete a clip | Hover a card, click the trash |
-| Clear the queue | **Clear** in the queue bar |
-| Settings, quit | Menu bar icon |
 
 ## Layout
 
@@ -140,8 +240,13 @@ Sources/Clipnotch/
   NowPlaying/    perl adapter bridge, observable model
   Clipboard/     capture, on-disk store, pasteboard read/write
   Paste/         paste queue + event tap, Accessibility state
+  Shelf/         parked files, drag in and out
+  Pomodoro/      phase cycle, chime
   Hotkey/        Carbon RegisterEventHotKey wrapper
   UI/            SwiftUI views, menu bar, settings window
+Resources/
+  Localization/  en, ru
+docs/capture.sh  screenshots of the open panel, for this README
 ```
 
 ## Third-party

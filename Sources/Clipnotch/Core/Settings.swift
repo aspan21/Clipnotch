@@ -49,7 +49,7 @@ final class Settings: ObservableObject {
     /// Delay between the intercepted paste and swapping in the next queue item.
     @Published var advanceDelayMs: Int = 150 { didSet { store.set(advanceDelayMs, forKey: Key.advanceDelayMs) } }
 
-    /// Pomodoro phase lengths, set by dragging round the dial.
+    /// Pomodoro phase lengths, set from the stepper beside the dial.
     @Published var focusMinutes: Int = 25 { didSet { store.set(focusMinutes, forKey: Key.focusMinutes) } }
     @Published var shortBreakMinutes: Int = 5 { didSet { store.set(shortBreakMinutes, forKey: Key.shortBreakMinutes) } }
     @Published var longBreakMinutes: Int = 15 { didSet { store.set(longBreakMinutes, forKey: Key.longBreakMinutes) } }
