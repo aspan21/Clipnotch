@@ -119,6 +119,31 @@ its own remaining time, and `runningPhase` names the one that ticks:
 
 ## Install
 
+### Download
+
+[**Download Clipnotch**](https://github.com/aspan21/Clipnotch/releases/latest) —
+universal (Apple silicon and Intel), macOS 14+.
+
+1. Open the `.dmg` and drag **Clipnotch** onto **Applications**.
+2. The build is ad-hoc signed and not notarised, so macOS blocks the first
+   launch. Right-click **Clipnotch** in Applications → **Open** → **Open** in the
+   dialog. On macOS 15+ the dialog may only show up under **System Settings →
+   Privacy & Security → Open Anyway**. The one-liner does the same thing:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Clipnotch.app
+   ```
+
+3. Grant Accessibility access: **System Settings → Privacy & Security →
+   Accessibility** → **+** → pick Clipnotch, switch it on, then relaunch the
+   app. Without it, clicking a clip only copies it — nothing gets pasted. See
+   [Accessibility permission](#accessibility-permission).
+
+Clipnotch runs from the menu bar and has no Dock icon. Move the pointer over
+the notch to unfold the panel.
+
+### Build from source
+
 Needs only the Command Line Tools — no Xcode.
 
 ```bash
@@ -129,7 +154,14 @@ open build/Clipnotch.app
 ```
 
 `build.sh` runs SwiftPM, assembles the `.app` by hand, copies the adapter
-resources in, and signs it.
+resources in, and signs it. It builds for this Mac's architecture only and
+leaves the bundle inside the checkout — nothing is copied to `/Applications`.
+
+`./package.sh` produces the distributable image instead: a universal binary,
+signed, inside `dist/Clipnotch-<version>.dmg` laid out for drag-and-drop. With
+a Developer ID certificate in the keychain it signs with that, and
+`NOTARY_PROFILE=<notarytool profile> ./package.sh` also notarises and staples
+the result, which removes the Gatekeeper step above.
 
 ## Controls
 
@@ -191,7 +223,7 @@ macOS ties the grant to the app's signature, not its path. An **ad-hoc**
 signature is identified by the binary's hash, so every rebuild looks like a
 different app and the grant has to be given again. Signing with a stable local
 certificate instead makes the designated requirement
-`identifier "kz.appstream.clipnotch" and certificate leaf = H"..."`, which
+`identifier "com.github.aspan21.clipnotch" and certificate leaf = H"..."`, which
 survives rebuilds — grant it once and it stays.
 
 `build.sh` uses the certificate named **Clipnotch Local Signing** if it finds
