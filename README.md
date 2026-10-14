@@ -3,13 +3,15 @@
 # Clipnotch
 
 **The MacBook notch, put to work.** A now-playing player, a clipboard queue that
-pastes several screenshots in a row, a file shelf, and a pomodoro timer — all in
-a panel that unfolds from the hardware cutout.
+pastes several screenshots in a row, a file shelf, a pomodoro timer, and a radar
+for Claude Code sessions waiting on you — all in a panel that unfolds from the
+hardware cutout.
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-1575F9)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-2ea44f)
+![MIT license](https://img.shields.io/badge/license-MIT-blue)
 
 <img src="docs/images/pomodoro.png" width="720" alt="Clipnotch panel open on the pomodoro tab">
 
@@ -20,7 +22,7 @@ a panel that unfolds from the hardware cutout.
 ## Why
 
 The notch is dead screen area you look at all day. Clipnotch fills it with the
-four things that otherwise cost a window each — and stays out of the way the
+five things that otherwise cost a window each — and stays out of the way the
 rest of the time: the closed strip only widens when something is actually
 happening, and the panel never steals focus from what you are typing in.
 
@@ -28,7 +30,7 @@ Built for macOS 14+, tested on macOS 26.5. Inspired by
 [boring.notch](https://github.com/TheBoredTeam/boring.notch), written from
 scratch. English and Russian.
 
-## The four panes
+## The panes
 
 <table>
 <tr><td width="50%">
@@ -78,6 +80,15 @@ break never stops the focus round that is running.
 </td></tr>
 </table>
 
+### ✦ Agents
+
+Every Claude Code session on this Mac, the ones waiting on you first: a
+permission prompt, a question, a finished turn, a turn that stopped on an
+error. While one waits, the closed notch shows its state on the left and a count
+on the right, and keeps them there until you deal with it — click the session
+to bring its terminal forward, or send it the next prompt. Off until you
+connect it; see [Claude Code radar](#claude-code-radar).
+
 ## The paste queue
 
 The point of the clipboard pane:
@@ -117,6 +128,48 @@ its own remaining time, and `runningPhase` names the one that ticks:
 | Change the length, reset, skip | The phase restarts at the top — still running, if it was running |
 | The phase runs out | The chime plays, the cycle advances, and the next phase waits on the line |
 
+## Claude Code radar
+
+Lets you leave Claude Code sessions running and come back when one actually
+needs you, instead of checking on them.
+
+**Connect it once:**
+
+1. **Settings → Claude Code → Install…** Clipnotch shows the change to
+   `~/.claude/settings.json` as a diff first; nothing is written until you
+   confirm, and the old file is kept as `settings.json.clipnotch-backup-<date>`.
+   The file is written back with its keys in sorted order.
+2. Start a new `claude` session. Sessions that were already running don't pick
+   up new hooks — restart them.
+
+**What it shows:**
+
+| State | When |
+|---|---|
+| Needs permission | A permission prompt is waiting in the terminal |
+| Has a question | Claude asked you something (`AskUserQuestion`, an MCP server) |
+| Finished | The turn ended and Claude waits for the next prompt |
+| Stopped on an error | The turn ended on an API error |
+| Working | Anything else — listed, never counted |
+
+A session counts until you click it in the **Agents** tab (or dismiss it with
+**✕**) or send it a new prompt. A sound plays when one starts waiting — Glass
+for a finished turn, Ping for a blocked one — unless its app is already in
+front, and can be turned off in Settings. `claude -p` and Agent SDK runs are
+ignored: nobody comes back to type their next prompt.
+
+**How it works.** The hooks run a small helper, `clipnotch-hook`, copied to
+`~/Library/Application Support/Clipnotch/bin/` so moving or updating the app
+never leaves Claude Code calling a missing path. The helper forwards each event
+to the app over a Unix socket only you can open, and always exits 0 with no
+output: it cannot block, approve or change anything a session does, and with
+Clipnotch quit it simply does nothing. **Settings → Claude Code → Remove…**
+takes the hooks out the same way they went in.
+
+For notifications on your phone, Claude Code's own Remote Control
+(`/remote-control`) and its push setting in `/config` cover that; Clipnotch
+only watches this Mac.
+
 ## Install
 
 ### Download
@@ -139,6 +192,8 @@ universal (Apple silicon and Intel), macOS 14+.
    app. Without it, clicking a clip only copies it — nothing gets pasted. See
    [Accessibility permission](#accessibility-permission).
 
+4. Optional: connect Claude Code — see [Claude Code radar](#claude-code-radar).
+
 Clipnotch runs from the menu bar and has no Dock icon. Move the pointer over
 the notch to unfold the panel.
 
@@ -154,7 +209,7 @@ open build/Clipnotch.app
 ```
 
 `build.sh` runs SwiftPM, assembles the `.app` by hand, copies the adapter
-resources in, and signs it. It builds for this Mac's architecture only and
+resources and the `clipnotch-hook` helper in, and signs it. It builds for this Mac's architecture only and
 leaves the bundle inside the checkout — nothing is copied to `/Applications`.
 
 `./package.sh` produces the distributable image instead: a universal binary,
@@ -272,15 +327,18 @@ the Accessibility pane once — the old ad-hoc grant does not carry over.
 ```
 Sources/Clipnotch/
   main.swift, AppDelegate.swift
-  Core/          settings, logging
+  Core/          settings, logging, open at login, display sleep
   Notch/         window, CGS private space, notch shape, geometry, open/close state
   NowPlaying/    perl adapter bridge, observable model
   Clipboard/     capture, on-disk store, pasteboard read/write
   Paste/         paste queue + event tap, Accessibility state
   Shelf/         parked files, drag in and out
   Pomodoro/      phase cycle, chime
-  Hotkey/        Carbon RegisterEventHotKey wrapper
+  Agents/        Claude Code radar: socket server, session states, hook installer
+  Hotkey/        Carbon RegisterEventHotKey wrapper, shortcut recorder
   UI/            SwiftUI views, menu bar, settings window
+Sources/ClipnotchHook/
+  main.swift     clipnotch-hook: forwards a hook event to the app
 Resources/
   Localization/  en, ru
 docs/capture.sh  screenshots of the open panel, for this README
@@ -292,3 +350,7 @@ docs/capture.sh  screenshots of the open panel, for this README
 - `Notch/CGSSpace.swift` derived from [Parrot](https://github.com/avaidyam/Parrot) — MPL-2.0
 
 No other dependencies.
+
+## License
+
+[MIT](LICENSE).
