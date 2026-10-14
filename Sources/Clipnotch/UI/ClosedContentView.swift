@@ -9,6 +9,7 @@ struct ClosedContentView: View {
     @ObservedObject var media = NowPlayingModel.shared
     @ObservedObject var queue = PasteQueue.shared
     @ObservedObject var pomodoro = PomodoroTimer.shared
+    @ObservedObject var radar = AgentRadar.shared
 
     var body: some View {
         // Two flanks plus the cutout add up to `effectiveClosedSize.width`
@@ -29,15 +30,24 @@ struct ClosedContentView: View {
     private var leftFlank: some View {
         Group {
             switch controller.closedActivity {
+            case .agents:
+                if let urgent = radar.mostUrgent {
+                    AgentGlyph(state: urgent.state, side: side)
+                }
             case .pomodoro:
                 PomodoroPip(timer: pomodoro, side: side)
-            case .pasteQueue, .media:
+            case .pasteQueue:
+                QueueGlyph(side: side)
+            case .pasteQueueAndPomodoro:
+                QueuePip(count: queue.queue.count, side: side)
+            case .media:
                 if media.isLive { artwork }
             case .none:
                 EmptyView()
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.leading, NotchController.flankFlareInset)
     }
 
     @ViewBuilder
@@ -78,9 +88,13 @@ struct ClosedContentView: View {
     private var rightFlank: some View {
         Group {
             switch controller.closedActivity {
+            case .agents:
+                if let urgent = radar.mostUrgent {
+                    QueuePip(count: radar.attentionCount, side: side, tint: urgent.state.tint)
+                }
             case .pasteQueue:
                 QueuePip(count: queue.queue.count, side: side)
-            case .pomodoro:
+            case .pomodoro, .pasteQueueAndPomodoro:
                 PomodoroClock(timer: pomodoro)
             case .media:
                 PlaybackIndicator(isPlaying: media.snapshot.isPlaying, tint: media.artworkAccent)
@@ -89,6 +103,7 @@ struct ClosedContentView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.trailing, NotchController.flankFlareInset)
     }
 }
 
@@ -156,17 +171,32 @@ private struct PomodoroClock: View {
     }
 }
 
+/// Clipboard symbol opposite the count badge, so an armed queue fills both
+/// flanks like every other activity does.
+private struct QueueGlyph: View {
+    let side: CGFloat
+
+    var body: some View {
+        Image(systemName: NotchTab.clipboard.symbol)
+            .font(.system(size: max(7, side * 0.62), weight: .semibold))
+            .foregroundStyle(Theme.accent)
+            .frame(width: side, height: side)
+            .transition(.scale.combined(with: .opacity))
+    }
+}
+
 /// Count badge shown while a paste queue is armed.
 private struct QueuePip: View {
     let count: Int
     let side: CGFloat
+    var tint: Color = Theme.accent
 
     var body: some View {
         Text("\(count)")
             .font(.system(size: max(7, side * 0.5), weight: .bold, design: .rounded))
             .foregroundStyle(.black)
             .frame(width: side, height: side)
-            .background(Circle().fill(Theme.accent))
+            .background(Circle().fill(tint))
             .transition(.scale.combined(with: .opacity))
     }
 }
@@ -210,5 +240,20 @@ private struct PlaybackIndicator: View {
         let offsets: [Double] = [0, 0.66, 0.33]
         let value = sin((phase + offsets[index]) * .pi * 2)
         return 4 + CGFloat((value + 1) / 2) * 9
+    }
+}
+
+/// The waiting session's state beside the cutout, pulsing until it is seen.
+private struct AgentGlyph: View {
+    let state: AgentState
+    let side: CGFloat
+
+    var body: some View {
+        Image(systemName: state.symbol)
+            .font(.system(size: max(7, side * 0.62), weight: .semibold))
+            .foregroundStyle(state.tint)
+            .symbolEffect(.pulse, options: .repeating)
+            .frame(width: side, height: side)
+            .transition(.scale.combined(with: .opacity))
     }
 }

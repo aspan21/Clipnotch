@@ -168,7 +168,8 @@ the result, which removes the Gatekeeper step above.
 | Action | How |
 |---|---|
 | Open / close panel | Hover the notch, or click it |
-| Open clipboard directly | `⌘⇧V` |
+| Open on a display without a notch | Double-click the strip, or hold the pointer against the top edge for 3 seconds — passing over it never opens it, so browser tabs stay reachable |
+| Open clipboard directly | `⌘⇧V` — change it, or add shortcuts for the other panes and for pomodoro start / pause, in Settings |
 | Switch pane | The icon rail down the left edge |
 | Add clip to queue | Click a card |
 | Remove from queue | Click a queued card again |
@@ -178,14 +179,18 @@ the result, which removes the Gatekeeper step above.
 | Shelve files | Drop them anywhere on the panel, open or closed |
 | Start / pause a phase | Play on the phase you are looking at |
 | Set a phase length | **−** / **+** beside the dial; hold to run, and then to leap |
+| See which Claude Code session waits on you | The notch shows a pulsing icon and a count until you open the session; the **Agents** tab lists them — click one to bring its terminal forward |
 | Settings, quit | Menu bar icon |
 
 ## Settings
 
 | | |
 |---|---|
+| **General** | Open at login |
+| **Claude Code** | Install or remove the radar's hooks (shown as a diff of `~/.claude/settings.json` first, backed up before writing); sound on or off |
 | **History** | Cap by clips (default 200) and by age (default 7 days); skip what password managers mark private; clear now |
 | **Panel** | Open on hover; show over full-screen apps; notch height override for displays it guesses wrong |
+| **Shortcuts** | Record or clear each global shortcut; a warning shows when another app already owns one |
 | **Paste Queue** | Accessibility status, and the delay between the intercepted paste and arming the next clip |
 
 ## Under the hood

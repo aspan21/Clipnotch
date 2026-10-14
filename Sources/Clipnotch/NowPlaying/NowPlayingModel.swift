@@ -23,6 +23,7 @@ final class NowPlayingModel: ObservableObject {
 
     private var bridge: MediaRemoteBridge?
     private var ticker: Timer?
+    private var cancellables = Set<AnyCancellable>()
     /// Set while the user drags the scrubber so incoming updates don't fight them.
     private var scrubbing = false
 
@@ -53,6 +54,29 @@ final class NowPlayingModel: ObservableObject {
         }
         bridge.start()
 
+        // The position is extrapolated from the snapshot, so a paused ticker
+        // loses nothing: it picks up the right value when it resumes.
+        ScreenActivity.shared.$isActive
+            .removeDuplicates()
+            .sink { [weak self] active in
+                MainActor.assumeIsolated { active ? self?.startTicker() : self?.stopTicker() }
+            }
+            .store(in: &cancellables)
+    }
+
+    func stop() {
+        lingerTask?.cancel()
+        cancellables.removeAll()
+        stopTicker()
+        bridge?.stop()
+        bridge = nil
+    }
+
+    func refresh() { bridge?.refresh() }
+
+    private func startTicker() {
+        guard ticker == nil else { return }
+        if !scrubbing { position = snapshot.position() }
         ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.scrubbing else { return }
@@ -61,15 +85,10 @@ final class NowPlayingModel: ObservableObject {
         }
     }
 
-    func stop() {
-        lingerTask?.cancel()
+    private func stopTicker() {
         ticker?.invalidate()
         ticker = nil
-        bridge?.stop()
-        bridge = nil
     }
-
-    func refresh() { bridge?.refresh() }
 
     var sourceAppName: String? {
         guard let id = snapshot.bundleIdentifier,

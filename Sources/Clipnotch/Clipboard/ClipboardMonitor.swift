@@ -14,6 +14,7 @@ final class ClipboardMonitor: ObservableObject {
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount: Int
     private var timer: Timer?
+    private var cancellables = Set<AnyCancellable>()
     /// changeCounts produced by our own writes, which must not re-enter history.
     private var selfWrittenCounts = Set<Int>()
 
@@ -32,13 +33,31 @@ final class ClipboardMonitor: ObservableObject {
     }
 
     func start() {
+        // Paused while nobody can see the screen. A copy made meanwhile is
+        // still caught by the first poll after waking, since the changeCount
+        // moved.
+        ScreenActivity.shared.$isActive
+            .removeDuplicates()
+            .sink { [weak self] active in
+                MainActor.assumeIsolated { active ? self?.startTimer() : self?.stopTimer() }
+            }
+            .store(in: &cancellables)
+    }
+
+    func stop() {
+        cancellables.removeAll()
+        stopTimer()
+    }
+
+    private func startTimer() {
+        guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
         timer?.tolerance = 0.1
     }
 
-    func stop() {
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
     }

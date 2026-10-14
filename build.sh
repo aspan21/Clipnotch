@@ -20,6 +20,9 @@ rm -rf "$APP"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
 cp "$BIN" "${CONTENTS}/MacOS/${APP_NAME}"
+# Run by Claude Code hooks; Clipnotch copies it out of the bundle on install.
+mkdir -p "${CONTENTS}/Helpers"
+cp "$(dirname "$BIN")/clipnotch-hook" "${CONTENTS}/Helpers/clipnotch-hook"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
 cp Resources/mediaremote-adapter.pl "${CONTENTS}/Resources/"
 cp -R Resources/MediaRemoteAdapter.framework "${CONTENTS}/Resources/"
@@ -41,6 +44,10 @@ else
   SIGN="-"
   echo "==> signing (ad-hoc — Accessibility access will need re-granting after this build)"
 fi
+
+# The helper is a separate executable, so it is signed on its own first; the
+# bundle pass below then seals it as-is.
+codesign --force --sign "$SIGN" --options runtime "${CONTENTS}/Helpers/clipnotch-hook"
 
 # One pass over the bundle. Signing the executable and then the wrapper looks
 # like two steps but is not: the second pass rewrites the executable's

@@ -48,13 +48,3 @@ final class HotKey {
         }, 1, &spec, nil, &eventHandler)
     }
 }
-
-enum KeyCode {
-    static let v: UInt32 = 9
-}
-
-enum HotKeyModifiers {
-    static let command = UInt32(cmdKey)
-    static let shift = UInt32(shiftKey)
-    static let option = UInt32(optionKey)
-}

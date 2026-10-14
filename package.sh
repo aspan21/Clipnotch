@@ -26,11 +26,14 @@ DMG_RW="dist/.${APP_NAME}-rw.dmg"
 # routes through xcbuild, which only ships with Xcode. Two cross-builds and a
 # lipo need nothing but the Command Line Tools.
 SLICES=()
+HOOK_SLICES=()
 for arch in arm64 x86_64; do
   triple="${arch}-apple-macosx${DEPLOYMENT_TARGET}"
   echo "==> swift build (release, ${arch})"
   swift build -c release --triple "$triple"
-  SLICES+=("$(swift build -c release --triple "$triple" --show-bin-path)/${APP_NAME}")
+  BIN_DIR="$(swift build -c release --triple "$triple" --show-bin-path)"
+  SLICES+=("${BIN_DIR}/${APP_NAME}")
+  HOOK_SLICES+=("${BIN_DIR}/clipnotch-hook")
 done
 
 echo "==> assembling ${APP}"
@@ -38,6 +41,9 @@ rm -rf "$STAGE" "$DMG_RW"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
 lipo -create "${SLICES[@]}" -output "${CONTENTS}/MacOS/${APP_NAME}"
+# Run by Claude Code hooks; Clipnotch copies it out of the bundle on install.
+mkdir -p "${CONTENTS}/Helpers"
+lipo -create "${HOOK_SLICES[@]}" -output "${CONTENTS}/Helpers/clipnotch-hook"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
 cp Resources/mediaremote-adapter.pl "${CONTENTS}/Resources/"
 cp -R Resources/MediaRemoteAdapter.framework "${CONTENTS}/Resources/"
@@ -75,6 +81,11 @@ fi
 # signatures; a Developer ID signature has to carry one to be notarisable.
 TIMESTAMP=(--timestamp)
 [[ $SIGN == - ]] && TIMESTAMP=(--timestamp=none)
+
+# The helper is a separate executable, so it is signed on its own first; the
+# bundle pass then seals it as-is.
+codesign --force --sign "$SIGN" --options runtime "${TIMESTAMP[@]}" \
+  "${CONTENTS}/Helpers/clipnotch-hook"
 
 codesign --force --sign "$SIGN" \
   --entitlements Resources/Clipnotch.entitlements \

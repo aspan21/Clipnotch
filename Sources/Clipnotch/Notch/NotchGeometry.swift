@@ -97,6 +97,19 @@ enum NotchGeometry {
         )
     }
 
+    /// Whether `point` rests against the very top edge of `screen`, over the
+    /// strip. Inclusive of `maxY`: the pointer pinned to the edge reports
+    /// exactly that, which a half-open `NSRect.contains` would reject.
+    static func isAtTopEdge(_ point: NSPoint, of screen: NSScreen, closedSize: CGSize) -> Bool {
+        let zone = peekZone(on: screen, closedSize: closedSize)
+        return point.x >= zone.minX && point.x <= zone.maxX
+            && point.y >= screen.frame.maxY - topEdgeDepth && point.y <= screen.frame.maxY
+    }
+
+    /// How far below the top edge the pointer may sit and still count as
+    /// pressed against it.
+    static let topEdgeDepth: CGFloat = 3
+
     /// Extra width on each side of the strip that still counts as "at the notch".
     static let peekZoneSlack: CGFloat = 40
 

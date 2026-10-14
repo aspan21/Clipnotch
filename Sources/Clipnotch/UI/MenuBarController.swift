@@ -30,7 +30,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
-        menu.addItem(withTitle: String(localized: "Open Clipboard") + "  \u{2318}\u{21E7}V", action: #selector(openClipboard), keyEquivalent: "")
+        let shortcut = ShortcutCenter.shared.shortcut(for: .clipboard).map { "  " + $0.displayString } ?? ""
+        menu.addItem(withTitle: String(localized: "Open Clipboard") + shortcut, action: #selector(openClipboard), keyEquivalent: "")
             .target = self
         menu.addItem(withTitle: String(localized: "Open Now Playing"), action: #selector(openNowPlaying), keyEquivalent: "")
             .target = self

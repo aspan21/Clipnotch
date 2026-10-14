@@ -7,6 +7,7 @@ enum NotchTab: String, CaseIterable, Identifiable {
     case clipboard
     case shelf
     case pomodoro
+    case agents
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum NotchTab: String, CaseIterable, Identifiable {
         case .clipboard: return String(localized: "Clipboard")
         case .shelf: return String(localized: "Shelf")
         case .pomodoro: return String(localized: "Pomodoro")
+        case .agents: return String(localized: "Agents")
         }
     }
 
@@ -25,6 +27,7 @@ enum NotchTab: String, CaseIterable, Identifiable {
         case .clipboard: return "square.on.square.dashed"
         case .shelf: return "tray.full"
         case .pomodoro: return "timer"
+        case .agents: return "sparkle"
         }
     }
 }
@@ -32,7 +35,13 @@ enum NotchTab: String, CaseIterable, Identifiable {
 /// What the closed notch shows beside the cutout, highest priority first.
 enum ClosedActivity: Equatable {
     case none
+    /// A Claude Code session waiting on you. Outranks everything: it is the
+    /// one activity where every minute unseen is a minute wasted.
+    case agents
     case pasteQueue
+    /// An armed queue while a pomodoro runs: both are live, so neither may
+    /// hide the other — the count on one side, the time on the other.
+    case pasteQueueAndPomodoro
     case pomodoro
     case media
 }
@@ -58,6 +67,9 @@ final class NotchController: ObservableObject {
     /// Whether the hardware already eats the strip we draw. False means the
     /// strip would cover real content.
     @Published private(set) var hasPhysicalNotch: Bool
+    /// Pointer is being held against the top edge of a display without a
+    /// cutout; the panel opens once it has stayed for `edgeDwellSeconds`.
+    @Published private(set) var isEdgeDwelling = false
     /// A file drag is hovering over the open panel.
     @Published var isShelfDropTargeted = false
     /// Opened because a file drag reached the notch. Hover tracking is
@@ -69,10 +81,20 @@ final class NotchController: ObservableObject {
     static let commitThreshold: CGFloat = 120
     /// Gap between the closed notch's live content and the outer edge.
     static let flankGutter: CGFloat = 10
+    /// The shape's top flare curls inward by its radius at the outer edge of
+    /// each flank. Content centred without this lands under the curl and gets
+    /// its outer side clipped — a round badge loses a slice.
+    static var flankFlareInset: CGFloat { NotchGeometry.cornerRadii.closed.top }
     /// How much shorter the closed content is than the cutout it sits beside.
     static let closedContentInset: CGFloat = 12
 
+    /// How long the pointer has to rest against the top edge to open a panel
+    /// on a display without a cutout. Long enough that reaching for a browser
+    /// tab or a menu never gets there.
+    static let edgeDwellSeconds: Double = 3
+
     private var hoverCloseTask: Task<Void, Never>?
+    private var edgeDwellTask: Task<Void, Never>?
     private var dragCloseTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -96,15 +118,26 @@ final class NotchController: ObservableObject {
     /// than a square glyph.
     static let pomodoroFlankWidth: CGFloat = 48
 
-    /// Closed strip hidden entirely: an external display has no cutout to hide
-    /// it in, so it would sit on top of the window content underneath.
-    var isConcealed: Bool {
-        !hasPhysicalNotch && !isOpen && !isPeeking
+    /// The closed strip has nowhere to hide: no cutout eats it, or a
+    /// fullscreen app owns the display and the strip would sit on its content
+    /// (a video, browser tabs). It stays out of sight until the pointer
+    /// reaches the top-centre band.
+    var needsPeek: Bool {
+        !hasPhysicalNotch || isFullscreenCovered
     }
 
-    /// Collapses to nothing while a fullscreen app owns this display.
+    /// Closed strip hidden entirely, until the pointer asks for it — or a
+    /// Claude Code session needs you, which is worth a strip over content.
+    var isConcealed: Bool {
+        needsPeek && !isOpen && !isPeeking && !agentsNeedYou
+    }
+
+    private var agentsNeedYou: Bool {
+        AgentRadar.shared.attentionCount > 0
+    }
+
     var effectiveClosedHeight: CGFloat {
-        (isFullscreenCovered || isConcealed) ? 0 : closedSize.height
+        isConcealed ? 0 : closedSize.height
     }
 
     /// Side of the album art and the pips shown beside the cutout.
@@ -116,7 +149,7 @@ final class NotchController: ObservableObject {
     /// content. Derived from that content, so the flanks and the frame can
     /// never disagree about how wide the strip is.
     var flankWidth: CGFloat {
-        closedContentSize > 0 ? closedContentSize + Self.flankGutter : 0
+        closedContentSize > 0 ? closedContentSize + Self.flankGutter + Self.flankFlareInset : 0
     }
 
     /// Width each flank actually occupies: zero unless there is live content,
@@ -126,13 +159,18 @@ final class NotchController: ObservableObject {
     }
 
     private func flankWidth(for activity: ClosedActivity) -> CGFloat {
-        activity == .pomodoro ? max(flankWidth, Self.pomodoroFlankWidth) : flankWidth
+        switch activity {
+        case .pomodoro, .pasteQueueAndPomodoro: return max(flankWidth, Self.pomodoroFlankWidth)
+        default: return flankWidth
+        }
     }
 
     var hasClosedContent: Bool {
-        guard !isFullscreenCovered, !isConcealed else { return false }
+        guard !isConcealed else { return false }
         let activity = closedActivity
         guard activity != .none else { return false }
+        // A waiting session is the one thing worth covering a menu title for.
+        if activity == .agents { return true }
         // Flanks that would cover the frontmost app's menu titles stay folded:
         // the menu is the thing the user came to the top of the screen for.
         return !menuTitlesBlockFlanks(width: flankWidth(for: activity))
@@ -157,7 +195,10 @@ final class NotchController: ObservableObject {
     /// media folds back into a plain notch once `NowPlayingModel` stops
     /// calling it live.
     var closedActivity: ClosedActivity {
-        if PasteQueue.shared.isActive { return .pasteQueue }
+        if agentsNeedYou { return .agents }
+        if PasteQueue.shared.isActive {
+            return PomodoroTimer.shared.isLive ? .pasteQueueAndPomodoro : .pasteQueue
+        }
         if PomodoroTimer.shared.isLive { return .pomodoro }
         if NowPlayingModel.shared.isLive { return .media }
         return .none
@@ -206,7 +247,13 @@ final class NotchController: ObservableObject {
 
     func open(tab: NotchTab? = nil) {
         hoverCloseTask?.cancel()
-        if let tab { self.tab = tab }
+        cancelEdgeDwell()
+        if let tab {
+            self.tab = tab
+        } else if !isOpen, AgentRadar.shared.attentionCount > 0 {
+            // Opened while a session waits: that is what you came for.
+            self.tab = .agents
+        }
         gestureTravel = 0
         guard !isOpen else { return }
         isOpen = true
@@ -241,7 +288,10 @@ final class NotchController: ObservableObject {
             openedForDrag = false
             dragCloseTask?.cancel()
             dragCloseTask = nil
-            guard !isFullscreenCovered else { return }
+            // Without a cutout the strip sits over real windows — browser tabs
+            // above all — so passing over it must not open it. A double-click
+            // or a rest against the top edge does; see `edgeDwellChanged`.
+            guard hasPhysicalNotch else { return }
             hoverCloseTask = Task { [weak self] in
                 // Small dwell so a cursor crossing the notch does not open it.
                 try? await Task.sleep(for: .milliseconds(180))
@@ -256,6 +306,32 @@ final class NotchController: ObservableObject {
                 self?.close()
             }
         }
+    }
+
+    // MARK: - Edge dwell
+
+    /// Reported by the pointer monitor on displays without a cutout: whether
+    /// the pointer rests against the top edge over the strip.
+    func edgeDwellChanged(_ atEdge: Bool) {
+        guard atEdge, !isOpen else {
+            cancelEdgeDwell()
+            return
+        }
+        guard edgeDwellTask == nil else { return }
+        isEdgeDwelling = true
+        edgeDwellTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.edgeDwellSeconds))
+            guard !Task.isCancelled, let self else { return }
+            self.edgeDwellTask = nil
+            self.isEdgeDwelling = false
+            self.open()
+        }
+    }
+
+    private func cancelEdgeDwell() {
+        edgeDwellTask?.cancel()
+        edgeDwellTask = nil
+        if isEdgeDwelling { isEdgeDwelling = false }
     }
 
     // MARK: - File drags
@@ -301,7 +377,7 @@ final class NotchController: ObservableObject {
         if isOpen {
             guard previewItem == nil else { return }
         } else {
-            guard !isFullscreenCovered, !isConcealed else { return }
+            guard !isConcealed else { return }
         }
 
         // Measure travel towards the action this state allows.

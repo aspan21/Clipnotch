@@ -19,6 +19,7 @@ final class Settings: ObservableObject {
         static let focusMinutes = "pomodoroFocusMinutes"
         static let shortBreakMinutes = "pomodoroShortBreakMinutes"
         static let longBreakMinutes = "pomodoroLongBreakMinutes"
+        static let agentSound = "agentSound"
     }
 
     private init() {
@@ -33,6 +34,7 @@ final class Settings: ObservableObject {
             Key.focusMinutes: 25,
             Key.shortBreakMinutes: 5,
             Key.longBreakMinutes: 15,
+            Key.agentSound: true,
         ])
     }
 
@@ -54,6 +56,9 @@ final class Settings: ObservableObject {
     @Published var shortBreakMinutes: Int = 5 { didSet { store.set(shortBreakMinutes, forKey: Key.shortBreakMinutes) } }
     @Published var longBreakMinutes: Int = 15 { didSet { store.set(longBreakMinutes, forKey: Key.longBreakMinutes) } }
 
+    /// Sound when a Claude Code session starts waiting on you.
+    @Published var agentSound: Bool = true { didSet { store.set(agentSound, forKey: Key.agentSound) } }
+
     var hasSeenAccessibilityPrompt: Bool {
         get { store.bool(forKey: Key.hasSeenAccessibilityPrompt) }
         set { store.set(newValue, forKey: Key.hasSeenAccessibilityPrompt) }
@@ -70,5 +75,6 @@ final class Settings: ObservableObject {
         focusMinutes = store.integer(forKey: Key.focusMinutes)
         shortBreakMinutes = store.integer(forKey: Key.shortBreakMinutes)
         longBreakMinutes = store.integer(forKey: Key.longBreakMinutes)
+        agentSound = store.bool(forKey: Key.agentSound)
     }
 }

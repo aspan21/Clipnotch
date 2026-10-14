@@ -53,10 +53,11 @@ final class NotchManager {
         return panels.values.first?.controller
     }
 
-    // MARK: - Peek on notch-less displays
+    // MARK: - Peek
 
-    /// A display without a cutout has no dead strip to hide in, so its closed
-    /// panel stays collapsed until the pointer reaches the top-centre band.
+    /// A display without a cutout, or one a fullscreen app owns, has no dead
+    /// strip to hide in, so its closed panel stays collapsed until the pointer
+    /// reaches the top-centre band.
     /// Tracked through event monitors rather than an invisible hover view: a
     /// view large enough to catch the pointer would also swallow clicks meant
     /// for the window underneath.
@@ -97,6 +98,22 @@ final class NotchManager {
         default:
             updatePeek()
             trackDragOpenedPanels()
+        }
+        // Only a free pointer counts: dragging a tab or a window up to the
+        // edge is not a request to open the panel.
+        updateEdgeDwell(armed: type == .mouseMoved)
+    }
+
+    private func updateEdgeDwell(armed: Bool) {
+        let mouse = NSEvent.mouseLocation
+        for (id, panel) in panels {
+            let controller = panel.controller
+            guard !controller.hasPhysicalNotch,
+                  let screen = NotchGeometry.screen(for: id)
+            else { continue }
+            let atEdge = armed
+                && NotchGeometry.isAtTopEdge(mouse, of: screen, closedSize: controller.closedSize)
+            controller.edgeDwellChanged(atEdge)
         }
     }
 
@@ -168,11 +185,11 @@ final class NotchManager {
 
         for (id, panel) in panels {
             let controller = panel.controller
-            guard !controller.hasPhysicalNotch else { continue }
             guard let screen = NotchGeometry.screen(for: id) else { continue }
 
-            let inside = NotchGeometry.peekZone(on: screen, closedSize: controller.closedSize)
-                .contains(mouse)
+            let inside = controller.needsPeek
+                && NotchGeometry.peekZone(on: screen, closedSize: controller.closedSize)
+                    .contains(mouse)
             guard controller.isPeeking != inside else { continue }
             controller.isPeeking = inside
         }

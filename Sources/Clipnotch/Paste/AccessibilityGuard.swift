@@ -10,18 +10,36 @@ final class AccessibilityGuard: ObservableObject {
     @Published private(set) var isTrusted = AXIsProcessTrusted()
 
     private var timer: Timer?
+    private var cancellables = Set<AnyCancellable>()
 
     private init() {}
 
     func startMonitoring() {
         refresh()
-        // No notification exists for a TCC grant, so poll while untrusted.
+        // No notification exists for a TCC grant, so poll — but not while
+        // nobody can be at System Settings to change it.
+        ScreenActivity.shared.$isActive
+            .removeDuplicates()
+            .sink { [weak self] active in
+                MainActor.assumeIsolated { active ? self?.startTimer() : self?.stopTimer() }
+            }
+            .store(in: &cancellables)
+    }
+
+    func stopMonitoring() {
+        cancellables.removeAll()
+        stopTimer()
+    }
+
+    private func startTimer() {
+        guard timer == nil else { return }
+        refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
     }
 
-    func stopMonitoring() {
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
     }

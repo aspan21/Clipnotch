@@ -19,6 +19,7 @@ struct NotchRootView: View {
     @ObservedObject var queue = PasteQueue.shared
     @ObservedObject var pomodoro = PomodoroTimer.shared
     @ObservedObject var menuBar = MenuBarObstruction.shared
+    @ObservedObject var radar = AgentRadar.shared
 
     /// Ties the closed strip's album art to the open panel's, so the artwork
     /// flies between the two instead of one fading out while the other fades in.
@@ -91,6 +92,11 @@ struct NotchRootView: View {
                 closedContent
                     .transition(.opacity.animation(.easeOut(duration: 0.12)))
             }
+
+            EdgeDwellBar(isActive: controller.isEdgeDwelling && !controller.isOpen)
+                .padding(.horizontal, radii.bottom + 2)
+                .padding(.bottom, 3)
+                .frame(maxHeight: .infinity, alignment: .bottom)
         }
         // The one animatable frame. `.top` keeps it horizontally centred, so
         // the shape opens and closes symmetrically about the cutout.
@@ -137,7 +143,9 @@ struct NotchRootView: View {
             isHovering = hovering
             controller.hoverChanged(hovering)
         }
-        .onTapGesture {
+        // Without a cutout the strip covers real content, so one stray click
+        // must not open it.
+        .onTapGesture(count: controller.hasPhysicalNotch ? 1 : 2) {
             if !controller.isOpen { controller.open() }
         }
         .notchPan { controller.pan($0) }
@@ -188,6 +196,7 @@ struct NotchRootView: View {
         case .clipboard: ClipboardPane()
         case .shelf: ShelfPane()
         case .pomodoro: PomodoroPane()
+        case .agents: AgentsPane()
         }
     }
 
@@ -203,6 +212,7 @@ private struct NotchSidebar: View {
     @ObservedObject var shelf = ShelfStore.shared
     @ObservedObject var pomodoro = PomodoroTimer.shared
     @ObservedObject var menuBar = MenuBarObstruction.shared
+    @ObservedObject var radar = AgentRadar.shared
 
     @Namespace private var selection
 
@@ -240,6 +250,9 @@ private struct NotchSidebar: View {
             return pomodoro.runningPhase.map { .dot($0.tint) }
         case .nowPlaying:
             return nil
+        case .agents:
+            guard let urgent = radar.mostUrgent else { return nil }
+            return .count(radar.attentionCount, urgent.state.tint)
         }
     }
 }
@@ -370,5 +383,30 @@ private struct HeaderIcon: View {
         .buttonStyle(.plain)
         .animation(Theme.quick, value: isHovering)
         .onHover { isHovering = $0 }
+    }
+}
+
+/// Fills along the bottom of the strip while the pointer rests against the
+/// top edge, so the wait reads as progress rather than as nothing happening.
+/// Snaps back the moment the pointer leaves.
+private struct EdgeDwellBar: View {
+    let isActive: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            Capsule(style: .continuous)
+                .fill(Theme.accent)
+                .frame(width: isActive ? proxy.size.width : 0, height: 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(isActive ? 1 : 0)
+                .animation(
+                    isActive
+                        ? .linear(duration: NotchController.edgeDwellSeconds)
+                        : .easeOut(duration: 0.15),
+                    value: isActive
+                )
+        }
+        .frame(height: 2)
+        .allowsHitTesting(false)
     }
 }

@@ -6,7 +6,9 @@ import Combine
 /// The panel joins a max-level private space (`NotchSpace`) so it stays visible
 /// over fullscreen windows. That is what you want for the open panel and the
 /// wrong thing for the closed strip, which would otherwise sit on top of a
-/// fullscreen video. So the closed notch collapses on those displays.
+/// fullscreen video. So on those displays the closed notch stays collapsed
+/// until the pointer reaches the top, the way it does on a display without a
+/// cutout.
 ///
 /// Detection is public API only: a fullscreen window is a layer-0 window whose
 /// bounds cover its whole display. No dependency, no private framework.

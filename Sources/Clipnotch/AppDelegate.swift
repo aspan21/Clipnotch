@@ -3,12 +3,13 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hotKey: HotKey?
     private let menuBar = MenuBarController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.shared.load()
         ClipStore.shared.load()
+        // Before anything that polls: they all pause through it.
+        ScreenActivity.shared.start()
 
         AccessibilityGuard.shared.startMonitoring()
         NowPlayingModel.shared.start()
@@ -22,7 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarObstruction.shared.start()
         NotchManager.shared.start()
         menuBar.install()
-        registerHotKey()
+        ShortcutCenter.shared.start()
+
+        AgentRadar.shared.start()
+        ClaudeHooks.refreshHelperIfInstalled()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -33,23 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FullscreenDetector.shared.stop()
         MenuBarObstruction.shared.stop()
         NotchManager.shared.stop()
+        ShortcutCenter.shared.stop()
+        AgentRadar.shared.stop()
+        ScreenActivity.shared.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-
-    // MARK: - Hotkey
-
-    private func registerHotKey() {
-        hotKey = HotKey(
-            keyCode: KeyCode.v,
-            modifiers: HotKeyModifiers.command | HotKeyModifiers.shift
-        ) {
-            Task { @MainActor in
-                NotchManager.shared.focused?.toggle(tab: .clipboard)
-            }
-        }
-        if hotKey == nil {
-            Log.notch.warning("could not register the global hotkey; another app likely owns it")
-        }
-    }
 }

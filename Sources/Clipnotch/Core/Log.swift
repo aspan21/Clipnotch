@@ -7,4 +7,5 @@ enum Log {
     static let clipboard = Logger(subsystem: subsystem, category: "clipboard")
     static let paste = Logger(subsystem: subsystem, category: "paste")
     static let notch = Logger(subsystem: subsystem, category: "notch")
+    static let agents = Logger(subsystem: subsystem, category: "agents")
 }

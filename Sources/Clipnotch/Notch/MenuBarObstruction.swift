@@ -43,14 +43,28 @@ final class MenuBarObstruction: ObservableObject {
             }
             .store(in: &cancellables)
 
-        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
-        }
-        refresh()
+        ScreenActivity.shared.$isActive
+            .removeDuplicates()
+            .sink { [weak self] active in
+                MainActor.assumeIsolated { active ? self?.startTimer() : self?.stopTimer() }
+            }
+            .store(in: &cancellables)
     }
 
     func stop() {
         cancellables.removeAll()
+        stopTimer()
+    }
+
+    private func startTimer() {
+        guard timer == nil else { return }
+        refresh()
+        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+    }
+
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
     }
