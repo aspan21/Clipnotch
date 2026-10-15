@@ -26,9 +26,7 @@ five things that otherwise cost a window each — and stays out of the way the
 rest of the time: the closed strip only widens when something is actually
 happening, and the panel never steals focus from what you are typing in.
 
-Built for macOS 14+, tested on macOS 26.5. Inspired by
-[boring.notch](https://github.com/TheBoredTeam/boring.notch), written from
-scratch. English and Russian.
+Built for macOS 14+, tested on macOS 26.5. English and Russian.
 
 ## The panes
 
@@ -59,7 +57,7 @@ image full size, or delete a clip, from the card itself.
 
 ### ⌸ Shelf
 
-<img src="docs/images/shelf.png" alt="Shelf pane holding dropped files">
+<img src="docs/images/shelf.png" alt="Empty Shelf pane waiting for dropped files">
 
 Drop files anywhere on the panel and they park here — then drag them out on a
 different display, without holding the mouse button down the whole journey.
@@ -81,6 +79,8 @@ break never stops the focus round that is running.
 </table>
 
 ### ✦ Agents
+
+<img src="docs/images/agents.png" width="720" alt="Agents pane listing Claude Code sessions">
 
 Every Claude Code session on this Mac, the ones waiting on you first: a
 permission prompt, a question, a finished turn, a turn that stopped on an
